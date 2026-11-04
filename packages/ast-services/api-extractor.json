@@ -18,5 +18,12 @@
   },
   "tsdocMetadata": {
     "enabled": false
+  },
+  // A public type must not mention a symbol the entry point does not export:
+  // the docs would link to a page that does not exist.
+  "messages": {
+    "extractorMessageReporting": {
+      "ae-forgotten-export": { "logLevel": "error", "addToApiReportFile": false }
+    }
   }
 }
