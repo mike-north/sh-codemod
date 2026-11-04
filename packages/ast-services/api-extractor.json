@@ -9,8 +9,11 @@
     "enabled": true,
     "apiJsonFilePath": "<projectFolder>/temp/ast-services.api.json"
   },
+  // `build` writes the rollup (scripts/rollup-declarations.mjs turns this on), because
+  // dependents compile against it. Leaving it off here keeps `check:api-report` and
+  // `prepack` from writing into `dist`.
   "dtsRollup": {
-    "enabled": true,
+    "enabled": false,
     "untrimmedFilePath": "<projectFolder>/dist/ast-services.d.ts"
   },
   "tsdocMetadata": {

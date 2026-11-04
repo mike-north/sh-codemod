@@ -37,22 +37,10 @@
   "main": "./dist/cjs/index.js",
   "nx": {
     "targets": {
-      "build": {
-        "outputs": [
-          "{projectRoot}/dist/**/*.js",
-          "{projectRoot}/dist/**/*.js.map",
-          "{projectRoot}/dist/**/*.d.ts",
-          "{projectRoot}/dist/**/*.d.ts.map",
-          "{projectRoot}/dist/cjs/package.json",
-          "!{projectRoot}/dist/ast-services.d.ts"
-        ]
-      },
       "check:api-report": {
         "outputs": [
           "{projectRoot}/api-report",
-          "{projectRoot}/temp",
-          "{projectRoot}/dist/ast-services.d.ts",
-          "{projectRoot}/dist/cjs/ast-services.d.cts"
+          "{projectRoot}/temp"
         ]
       },
       "uplevel-api-reports": {
@@ -75,15 +63,15 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-cjs.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/build-cjs.mjs && node ../../scripts/rollup-declarations.mjs api-extractor.json && node scripts/copy-cjs-types.mjs",
     "check": "concurrently -n lint,types,api-report \"pnpm run check:lint-ts\" \"pnpm run check:typecheck\" \"pnpm run check:api-report\"",
-    "check:api-report": "api-extractor run && node scripts/copy-cjs-types.mjs",
+    "check:api-report": "api-extractor run",
     "check:lint-ts": "eslint .",
     "check:typecheck": "tsc --noEmit",
     "clean": "rimraf --glob dist \"temp/*\" \"*.tsbuildinfo\"",
-    "fix:api-report": "api-extractor run --local && node scripts/copy-cjs-types.mjs",
+    "fix:api-report": "api-extractor run --local",
     "fix:lint-ts": "eslint . --fix",
-    "prepack": "api-extractor run && node scripts/copy-cjs-types.mjs",
+    "prepack": "api-extractor run",
     "test": "vitest run",
     "uplevel-api-reports": "mkdir -p ../../api-report-combined ../../api-docs-temp && cp api-report/ast-services.api.md ../../api-report-combined/ && cp temp/ast-services.api.json ../../api-docs-temp/"
   },

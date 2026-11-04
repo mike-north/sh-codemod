@@ -8,7 +8,7 @@
  * checkout is reachable except through the installed tarball.
  *
  * `--ignore-scripts` skips `prepack`; the declaration rollup and its `.d.cts` copy are produced
- * beforehand by `check:api-report`, which the Nx `test` target depends on.
+ * beforehand by `build`, which the Nx `test` target depends on.
  *
  * @see https://pnpm.io/cli/pack — `--json` output shape
  * @see https://nodejs.org/api/packages.html#conditional-exports — `import` and `require`
