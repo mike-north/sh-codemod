@@ -1,9 +1,12 @@
 # @eslint-sh/ast-services
 
-Non-lint services over the [`sh-ast`](https://github.com/mike-north/sh-ast) shell parser. Today
-that is one function, `format`, which rewrites a whole shell script into the canonical text of
-mvdan/sh's printer (the `shfmt` style). Whole-file reformatting does not fit ESLint's text-range
-fix model, so it lives here instead of in `@eslint-sh/eslint-plugin`.
+Non-lint services over the [`sh-ast`](https://github.com/mike-north/sh-ast) shell parser:
+
+- `format` rewrites a whole shell script into the canonical text of mvdan/sh's printer (the
+  `shfmt` style). Whole-file reformatting does not fit ESLint's text-range fix model, so it lives
+  here instead of in `@eslint-sh/eslint-plugin`.
+- `createEditor` makes AST-aware edits (a codemod) that leave every other byte of the file alone.
+  ESLint's fixer only runs inside a lint pass, and a reprint would reformat the whole file.
 
 > **Not on npm yet.** This package is marked `private` until its first publish is set up, so
 > `npm install @eslint-sh/ast-services` does not work today. It is versioned with the other
@@ -112,6 +115,93 @@ try {
 Other `sh-ast` failures are thrown as they are: `PrintError` for incompatible printer options
 (`Minify` together with `SingleLine`), and `InputError` for text that is not well-formed Unicode
 or an unsupported `Variant`.
+
+## `createEditor(text, options?)`
+
+`createEditor` parses `text` once and lets you queue edits against the nodes of that parse.
+`apply()` splices the edits into the original text. Nothing is reprinted, so everything outside
+the edited node ranges (comments, odd spacing, `\r\n` line endings, multibyte characters) comes
+back exactly as it went in.
+
+<!-- codemod-example -->
+
+```js
+import { createEditor } from '@eslint-sh/ast-services';
+import { walk } from 'sh-ast';
+
+// Codemod: replace the non-portable `which` with `command -v`, and add `set -eu` on top.
+const source = '#!/bin/sh\n# find 🎉 tools\nwhich   git  # where?\nwhich 你好\n';
+
+const editor = createEditor(source);
+
+walk(editor.ast, (node) => {
+  if (node?.Type === 'CallExpr') {
+    const command = node.Args?.[0];
+    const first = command?.Parts?.[0];
+    if (command && first?.Type === 'Lit' && first.Value === 'which') {
+      editor.replaceNode(command, 'command -v');
+    }
+  }
+  return true;
+});
+
+const firstStatement = editor.ast.Stmts?.[0];
+if (firstStatement) editor.insertBefore(firstStatement, 'set -eu\n');
+
+export const result = editor.apply();
+// '#!/bin/sh\n# find 🎉 tools\nset -eu\ncommand -v   git  # where?\ncommand -v 你好\n'
+```
+
+The editor is `{ ast, replaceNode, insertBefore, apply }`:
+
+| Member                       | Meaning                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ast`                        | The parsed `File`, typed by `sh-ast`. Walk it with `sh-ast`'s `walk` to find nodes.             |
+| `replaceNode(node, newText)` | Queue replacing the node's source text.                                                         |
+| `insertBefore(node, text)`   | Queue inserting `text` immediately before the node's first character.                           |
+| `apply()`                    | Return the original text with all queued edits applied. May be called again after queuing more. |
+
+`options` are `sh-ast`'s `ParseOptions` (dialect through `Variant`, and so on); comments are kept
+unless you say otherwise. A parse failure throws the `sh-ast` error unchanged.
+
+### Edit rules
+
+Edits are placed by their position in the _original_ text, not by the order you queued them.
+
+- **Adjacent edits** (one ends exactly where the next begins) are both applied.
+- **Insertions at one position** appear in the order `insertBefore` was called.
+- **An insertion at the start of a replaced node** comes before the replacement, whichever you
+  queued first. An insertion at the _end_ of a replaced node (that is, before the node that
+  follows it) comes after the replacement.
+- **Overlapping edits throw.** Two replacements of the same node, a node and its ancestor, or an
+  insertion strictly inside a replaced node make `apply()` throw `EditOverlapError`, with the
+  conflicting pair on `first` and `second` and the stable `code` `'ESLINT_SH_EDIT_OVERLAP'`. No
+  partial text is returned.
+- **Foreign nodes are rejected.** `replaceNode` and `insertBefore` throw `ForeignNodeError`
+  (`code` `'ESLINT_SH_EDIT_FOREIGN_NODE'`) for a node that did not come from this editor's own
+  parse, including one from another `createEditor` call over the same text, and a
+  `structuredClone` of a node. A value that is not a node at all (for example `undefined`) throws `InvalidNodeError` (`'ESLINT_SH_EDIT_INVALID_NODE'`).
+
+### Ranges
+
+Ranges are UTF-16 indices into the string you passed, the same units as ESLint ranges and
+`String#slice`, so they are correct after emoji, CJK text and combining marks. The node extents
+are the parser's: a `Stmt` does not include its leading comments or its terminating `;`, and a
+`File` spans from its first to its last token. Two ranges the parser reports too wide are
+narrowed so they cannot eat structure: a word that ends a `\r\n` line is edited without its
+`\r`, and the body of a here-document (including `<<-` and CRLF forms) is edited without its
+closing delimiter, so replacing a body never produces an unterminated here-document. Replacing the
+whole `Redirect` or `Stmt` still replaces the delimiter, because it is inside the node.
+
+### Limits
+
+- The result is not re-parsed. If you need to know a codemod produced valid shell, parse the
+  output (for example with `createEditor(result)`).
+- Comments the parser attaches to a statement (leading, trailing, between statements) are
+  edited like any node, but `sh-ast` hands out a fresh object for them on every `walk`, so
+  they are recognized by the position of their `#` and their text rather than by object
+  identity. A comment copied from another parse that has the same text at the same offset is
+  therefore accepted, and edits the same bytes.
 
 ## Differences from prettier-plugin-sh
 

@@ -4,10 +4,38 @@
 
 ```ts
 
+import { File as File_2 } from 'sh-ast';
 import type { LangError } from 'sh-ast';
+import { Node } from 'sh-ast';
 import type { ParseError } from 'sh-ast';
 import { ParseOptions } from 'sh-ast';
 import { PrintOptions } from 'sh-ast';
+
+// @public
+export function createEditor(text: string, options?: ParseOptions): Editor;
+
+// @public
+export interface Editor {
+    apply(): string;
+    readonly ast: File_2;
+    insertBefore(node: Node, text: string): void;
+    replaceNode(node: Node, newText: string): void;
+}
+
+// @public
+export class EditOverlapError extends Error {
+    constructor(first: TextEdit, second: TextEdit);
+    readonly code = "ESLINT_SH_EDIT_OVERLAP";
+    readonly first: TextEdit;
+    readonly second: TextEdit;
+}
+
+// @public
+export class ForeignNodeError extends Error {
+    constructor(node: Node);
+    readonly code = "ESLINT_SH_EDIT_FOREIGN_NODE";
+    readonly node: Node;
+}
 
 // @public
 export function format(text: string, options?: FormatOptions): string;
@@ -25,6 +53,19 @@ export class FormatSyntaxError extends Error {
     readonly filename: string | undefined;
     readonly line: number;
     readonly offset: number;
+}
+
+// @public
+export class InvalidNodeError extends Error {
+    constructor(received: unknown);
+    readonly code = "ESLINT_SH_EDIT_INVALID_NODE";
+    readonly received: unknown;
+}
+
+// @public
+export interface TextEdit {
+    range: [number, number];
+    text: string;
 }
 
 // (No @packageDocumentation comment for this package)
