@@ -17,7 +17,6 @@ import {
   InvalidNodeError,
   type TextEdit,
 } from './edit-errors.js';
-import { endOfInputMarkerError } from './end-of-input-guard.js';
 
 /**
  * The editing session over one parse of one text, returned by `createEditor`.
@@ -241,16 +240,12 @@ function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
  *   says otherwise, so comment nodes can be edited.
  * @returns The editing session.
  * @throws The `sh-ast` `ParseError`, `LangError` or `InputError` when `text` cannot be parsed.
- *   A `ParseError` is also thrown when the parser would silently drop text at a U+0080, its
- *   internal end-of-input marker: a tree that omitted everything after it is never returned.
- *   A U+0080 the parser reads as an ordinary character (in a quoted-delimiter heredoc body,
- *   after a backslash) is accepted.
+ *   Native nesting refusals (`ShParseMaxDepthError`) also propagate unchanged;
+ *   no editor or partial tree is returned. Unicode source characters are preserved.
  *
  * @public
  */
 export function createEditor(text: string, options: ParseOptions = {}): Editor {
-  const unsupported = endOfInputMarkerError(text, { KeepComments: true, ...options });
-  if (unsupported) throw unsupported;
   const parsed = parseWithPositionsSync(text, { KeepComments: true, ...options });
   const byteToUtf16 = buildByteToUtf16(text);
   const heredocBodyEnds = findHeredocBodyEnds(parsed, text, byteToUtf16);

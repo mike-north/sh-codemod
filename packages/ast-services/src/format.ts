@@ -7,7 +7,6 @@ import {
   type ParseOptions,
   type PrintOptions,
 } from 'sh-ast';
-import { endOfInputMarkerError } from './end-of-input-guard.js';
 import { FormatSyntaxError } from './format-syntax-error.js';
 
 /**
@@ -91,10 +90,9 @@ function refusePrinterControlCharacters(text: string, filename: ParseOptions['Fi
  * @param options - Printer options, and the `Variant` dialect (Bash when omitted).
  * @returns The formatted source, ending in a newline.
  * @throws {@link FormatSyntaxError} when `text` is not valid in the selected dialect, or
- *   the parser would silently drop text at a U+0080, its internal end-of-input marker, or
  *   source contains a literal vertical tab or form feed that the printer cannot preserve.
- *   A U+0080 the parser reads as an ordinary character (in a quoted-delimiter heredoc body,
- *   after a backslash) formats as any other character.
+ *   Unicode source characters are preserved by the parser and printer.
+ *   Native nesting refusals (`ShParseMaxDepthError`) propagate unchanged.
  *   Other `sh-ast` failures (`PrintError` for incompatible printer options such as
  *   `Minify` with `SingleLine`, `InputError` for text that is not well-formed Unicode)
  *   are thrown as they are.
@@ -106,8 +104,6 @@ export function format(text: string, options: FormatOptions = {}): string {
   let printed;
   try {
     refusePrinterControlCharacters(text, parse.Filename);
-    const unsupported = endOfInputMarkerError(text, parse);
-    if (unsupported) throw unsupported;
     printed = printSync(parseSync(text, parse), print);
   } catch (error) {
     if (isSyntaxFailure(error)) {
