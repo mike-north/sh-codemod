@@ -1,7 +1,7 @@
 {
   "name": "@eslint-sh/ast-services",
   "description": "Non-lint services over the sh-ast shell parser: whole-file formatting with mvdan/sh's printer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "author": "Mike North <michael.l.north@gmail.com>",
   "dependencies": {
