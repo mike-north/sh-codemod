@@ -1,9 +1,10 @@
+/** Stable formatting failures expose caller-facing positions while preserving the underlying cause. */
 import type { LangError, ParseError } from 'sh-ast';
 
 /**
- * Thrown by `format` when the input is not valid shell for the selected dialect.
+ * Thrown by `format` when input is invalid shell or cannot be formatted without losing content.
  *
- * It exists so callers can tell "your script is malformed" from every other failure and can
+ * It exists so callers can distinguish input that cannot be safely formatted from other failures and can
  * point at the problem, without depending on how `sh-ast` reports parse failures. Formatting
  * never returns partial output: a syntax error always surfaces as this error, never as text.
  *
@@ -30,10 +31,10 @@ export class FormatSyntaxError extends Error {
   /** One-based UTF-16 column within {@link FormatSyntaxError.line}. */
   readonly column: number;
 
-  /** The `Filename` option the caller passed to `format`, if any. */
+  /** The `Filename` option decoded as UTF-8 when passed as bytes, if any. */
   readonly filename: string | undefined;
 
-  /** The underlying `sh-ast` failure, whose message describes what the parser rejected. */
+  /** The underlying parse or content-preservation failure, describing why input was refused. */
   override readonly cause: ParseError | LangError;
 
   /**
