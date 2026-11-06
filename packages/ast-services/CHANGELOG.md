@@ -1,5 +1,15 @@
 # @eslint-sh/ast-services
 
+## 0.1.1
+
+### Patch Changes
+
+- [#307](https://github.com/mike-north/eslint-sh/pull/307) [`58c5c98`](https://github.com/mike-north/eslint-sh/commit/58c5c980c2aa1d293694ce9da458991ba6ae649d) Thanks [@mike-north](https://github.com/mike-north)! - Refuse formatting source with literal vertical tabs or form feeds rather than changing string values, and decode byte-valued filenames in formatting errors. Do not credit strict-mode flags from relative env interpreters or space-separated --split-string shebangs; reject that long shebang form when recognizing the interpreter. Report negative hexadecimal, octal, and base-prefixed integer array indices for older Bash targets, while ignoring zero and invalid integer spellings.
+
+  Refuse printed ESLint replacements containing literal vertical tabs or form feeds with TypeError,
+  including values introduced by an edited syntax tree. Credit shell flags in GNU env's
+  `--split-string=bash -eu` shebang form. The low-level `/syntax` printer remains unchanged.
+
 ## 0.1.0
 
 ### Minor Changes
