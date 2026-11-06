@@ -5,7 +5,7 @@
   "private": true,
   "author": "Mike North <michael.l.north@gmail.com>",
   "dependencies": {
-    "sh-ast": "^0.9.0"
+    "sh-ast": "^0.10.0"
   },
   "engines": {
     "node": ">=22.12.0"
