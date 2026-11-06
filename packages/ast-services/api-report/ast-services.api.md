@@ -8,11 +8,10 @@ import { File as File_2 } from 'sh-ast';
 import type { LangError } from 'sh-ast';
 import { Node } from 'sh-ast';
 import type { ParseError } from 'sh-ast';
-import { ParseOptions } from 'sh-ast';
 import { PrintOptions } from 'sh-ast';
 
 // @public
-export function createEditor(text: string, options?: ParseOptions): Editor;
+export function createEditor(text: string, options?: EditorOptions): Editor;
 
 // @public
 export interface Editor {
@@ -20,6 +19,12 @@ export interface Editor {
     readonly ast: File_2;
     insertBefore(node: Node, text: string): void;
     replaceNode(node: Node, newText: string): void;
+}
+
+// @public
+export interface EditorOptions {
+    readonly dialect?: ShellDialect;
+    readonly filename?: string;
 }
 
 // @public
@@ -41,7 +46,10 @@ export class ForeignNodeError extends Error {
 export function format(text: string, options?: FormatOptions): string;
 
 // @public
-export type FormatOptions = PrintOptions & Pick<ParseOptions, 'Variant' | 'Filename'>;
+export interface FormatOptions extends PrintOptions {
+    readonly dialect?: ShellDialect;
+    readonly filename?: string;
+}
 
 // @public
 export class FormatSyntaxError extends Error {
@@ -61,6 +69,9 @@ export class InvalidNodeError extends Error {
     readonly code = "ESLINT_SH_EDIT_INVALID_NODE";
     readonly received: unknown;
 }
+
+// @public
+export type ShellDialect = 'bash' | 'posix' | 'mksh' | 'bats' | 'zsh';
 
 // @public
 export interface TextEdit {

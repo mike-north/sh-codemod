@@ -31,7 +31,7 @@ export class FormatSyntaxError extends Error {
   /** One-based UTF-16 column within {@link FormatSyntaxError.line}. */
   readonly column: number;
 
-  /** The `Filename` option decoded as UTF-8 when passed as bytes, if any. */
+  /** The project `filename` option, if any. */
   readonly filename: string | undefined;
 
   /** The underlying parse or content-preservation failure, describing why input was refused. */
@@ -42,7 +42,7 @@ export class FormatSyntaxError extends Error {
    *
    * @param cause - The `sh-ast` failure, which carries the parser's byte position.
    * @param source - The exact string that was parsed, used to translate that position.
-   * @param filename - The `Filename` option, if the caller gave one.
+   * @param filename - The project `filename` option, if the caller gave one.
    */
   constructor(cause: ParseError | LangError, source: string, filename: string | undefined) {
     super(cause.message, { cause });

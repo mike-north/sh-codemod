@@ -1,3 +1,4 @@
+/** Source-bound text edits preserve untouched bytes and reject ambiguous or unowned ranges. */
 import {
   nodeEnd,
   nodePos,
@@ -6,17 +7,26 @@ import {
   type Comment,
   type File,
   type Node,
-  type ParseOptions,
   type ParsedFile,
   type Redirect,
   type Word,
 } from 'sh-ast';
+import { serviceParseOptions } from './service-options.js';
+import type { ShellDialect } from './shell-dialect.js';
 import {
   EditOverlapError,
   ForeignNodeError,
   InvalidNodeError,
   type TextEdit,
 } from './edit-errors.js';
+
+/** Grammar and diagnostic source name for one editing session. @public */
+export interface EditorOptions {
+  /** Project grammar label; Bash when omitted. */
+  readonly dialect?: ShellDialect;
+  /** Source name for diagnostics, never a filesystem lookup. */
+  readonly filename?: string;
+}
 
 /**
  * The editing session over one parse of one text, returned by `createEditor`.
@@ -33,6 +43,7 @@ export interface Editor {
    *
    * @throws {@link ForeignNodeError} when `node` is not from this editor's parse.
    * @throws {@link InvalidNodeError} when `node` is not a syntax node.
+   * @throws RangeError with `ESLINT_SH_EDIT_RANGE` when parser bounds do not name character boundaries.
    */
   replaceNode(node: Node, newText: string): void;
 
@@ -42,6 +53,7 @@ export interface Editor {
    *
    * @throws {@link ForeignNodeError} when `node` is not from this editor's parse.
    * @throws {@link InvalidNodeError} when `node` is not a syntax node.
+   * @throws RangeError with `ESLINT_SH_EDIT_RANGE` when parser bounds do not name character boundaries.
    */
   insertBefore(node: Node, text: string): void;
 
@@ -236,17 +248,20 @@ function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
  * The result is not re-parsed; a caller who needs to know it is still valid shell can parse it.
  *
  * @param text - Shell source.
- * @param options - Parser options passed to `sh-ast`. Comments are kept unless `KeepComments`
- *   says otherwise, so comment nodes can be edited.
+ * @param options - Project dialect and filename. Comments are always kept so they can be edited.
  * @returns The editing session.
- * @throws The `sh-ast` `ParseError`, `LangError` or `InputError` when `text` cannot be parsed.
- *   Native nesting refusals (`ShParseMaxDepthError`) also propagate unchanged;
+ * @throws TypeError with `ESLINT_SH_SERVICE_OPTION` for invalid project options or removed names.
+ * @throws The `sh-ast` `ParseError` (`SH_AST_SYNTAX_PARSE`), `LangError` (`SH_AST_SYNTAX_LANG`)
+ *   or `InputError` (`SH_AST_SYNTAX_INPUT`) when `text` cannot be parsed. These errors pass through
+ *   with their original objects and causes, rather than becoming configuration errors.
+ *   Native nesting refusals (`ShParseMaxDepthError`, `SH_AST_PARSE_MAX_DEPTH`) also propagate unchanged;
  *   no editor or partial tree is returned. Unicode source characters are preserved.
+ *   Traversal/bridge failures (`SH_AST_WALK_PANIC`, `SH_AST_INTERNAL`) also pass through unchanged.
  *
  * @public
  */
-export function createEditor(text: string, options: ParseOptions = {}): Editor {
-  const parsed = parseWithPositionsSync(text, { KeepComments: true, ...options });
+export function createEditor(text: string, options: EditorOptions = {}): Editor {
+  const parsed = parseWithPositionsSync(text, serviceParseOptions('createEditor', options));
   const byteToUtf16 = buildByteToUtf16(text);
   const heredocBodyEnds = findHeredocBodyEnds(parsed, text, byteToUtf16);
   const attachedComments = findAttachedComments(parsed, byteToUtf16);
@@ -266,7 +281,11 @@ export function createEditor(text: string, options: ParseOptions = {}): Editor {
     const start = byteToUtf16.at(positions.Pos.Offset) ?? -1;
     const end = byteToUtf16.at(positions.End.Offset) ?? -1;
     if (start < 0 || end < 0) {
-      throw new RangeError(`${node.Type} bounds do not fall on character boundaries of the text`);
+      // ESLINT_SH_EDIT_RANGE refuses a parser extent that cannot name a text boundary.
+      throw Object.assign(
+        new RangeError(`${node.Type} bounds do not fall on character boundaries of the text`),
+        { code: 'ESLINT_SH_EDIT_RANGE' },
+      );
     }
     const bodyEnd = heredocBodyEnds.get(node);
     return [start, bodyEnd ?? trimLineTerminatorCarriageReturn(text, start, end)];

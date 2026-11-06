@@ -6,7 +6,7 @@ describe('format content safety', () => {
   for (const character of ['\v', '\f']) {
     it(`refuses literal U+${character.charCodeAt(0).toString(16)} rather than changing its value`, () => {
       const source = `# 日本語\nprintf '%s' 'a${character}b'\n`;
-      const options = { Filename: new TextEncoder().encode('日本語.sh') };
+      const options = { filename: '日本語.sh' };
       expect(() => format(source, options)).toThrow(FormatSyntaxError);
       try {
         format(source, options);
@@ -29,10 +29,10 @@ describe('format content safety', () => {
     expect(format("printf '%s' '\\v\\f'\n")).toBe("printf '%s' '\\v\\f'\n");
   });
 
-  it('decodes a byte-valued Filename on syntax errors', () => {
+  it('preserves the project filename on syntax errors', () => {
     expect.assertions(3);
     try {
-      format('if', { Filename: new TextEncoder().encode('日本語.sh') });
+      format('if', { filename: '日本語.sh' });
     } catch (error) {
       expect(error).toBeInstanceOf(FormatSyntaxError);
       expect(error).toHaveProperty('filename', '日本語.sh');

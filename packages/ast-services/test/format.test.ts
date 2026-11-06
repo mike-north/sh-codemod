@@ -13,7 +13,7 @@
  * (tab indentation, single spaces between words, one blank line kept at most); none is captured
  * from a previous run.
  */
-import { LangPOSIX, PrintError } from 'sh-ast';
+import { PrintError } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import { format, FormatSyntaxError, type FormatOptions } from '../src/index.js';
 
@@ -76,7 +76,7 @@ describe('options', () => {
 
   it('parses with the requested dialect', () => {
     expect(format('echo ${x@Q}\n')).toBe('echo ${x@Q}\n');
-    const error = formatError('echo ${x@Q}\n', { Variant: LangPOSIX });
+    const error = formatError('echo ${x@Q}\n', { dialect: 'posix' });
     expect(error).toBeInstanceOf(FormatSyntaxError);
   });
 
@@ -218,7 +218,7 @@ describe('idempotence across printer options', () => {
 
 describe('syntax errors', () => {
   it('throws FormatSyntaxError, with code, cause and filename, instead of returning text', () => {
-    const error = formatError('echo (', { Filename: 'build.sh' });
+    const error = formatError('echo (', { filename: 'build.sh' });
     expect(error).toBeInstanceOf(FormatSyntaxError);
     const syntaxError = error as FormatSyntaxError;
     expect(syntaxError.code).toBe('ESLINT_SH_FORMAT_SYNTAX');
@@ -255,7 +255,7 @@ describe('syntax errors', () => {
   });
 
   it('reports a dialect rejection with its position', () => {
-    const error = formatError('echo ${x@Q}', { Variant: LangPOSIX }) as FormatSyntaxError;
+    const error = formatError('echo ${x@Q}', { dialect: 'posix' }) as FormatSyntaxError;
     expect(error).toBeInstanceOf(FormatSyntaxError);
     expect(error.cause.code).toBe('SH_AST_SYNTAX_LANG');
     expect(error.line).toBe(1);

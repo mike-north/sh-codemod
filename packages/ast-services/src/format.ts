@@ -1,17 +1,12 @@
 /** Whole-file formatting refuses known parser/printer data loss instead of returning changed code. */
-import {
-  LangError,
-  ParseError,
-  parseSync,
-  printSync,
-  type ParseOptions,
-  type PrintOptions,
-} from 'sh-ast';
+import { LangError, ParseError, parseSync, printSync, type PrintOptions } from 'sh-ast';
+import { serviceParseOptions } from './service-options.js';
+import type { ShellDialect } from './shell-dialect.js';
 import { FormatSyntaxError } from './format-syntax-error.js';
 
 /**
- * Options for `format`: the printer's options and the parse dialect, taken from `sh-ast` so
- * they cannot drift from the pinned mvdan/sh.
+ * Options for `format`: project dialect/filename vocabulary and the pinned
+ * parser's printer knobs. Numeric parser variants are private to the adapter.
  *
  * Only the parse options that cannot change what is printed are exposed. `RecoverErrors`
  * would let malformed input through as a repaired tree, and `StopAt` would silently drop the
@@ -21,29 +16,16 @@ import { FormatSyntaxError } from './format-syntax-error.js';
  *
  * @public
  */
-export type FormatOptions = PrintOptions & Pick<ParseOptions, 'Variant' | 'Filename'>;
+export interface FormatOptions extends PrintOptions {
+  /** Project grammar label; Bash when omitted. */
+  readonly dialect?: ShellDialect;
+  /** Source name used in diagnostics; no filesystem lookup is performed. */
+  readonly filename?: string;
+}
 
 /** Narrows a caught value to the two `sh-ast` failures that mean "the input is not valid". */
 function isSyntaxFailure(error: unknown): error is ParseError | LangError {
   return error instanceof ParseError || error instanceof LangError;
-}
-
-/** Separates the options that steer parsing from those that steer printing. */
-function splitOptions(options: FormatOptions): { parse: ParseOptions; print: PrintOptions } {
-  const { Variant, Filename, ...print } = options;
-  return {
-    parse: {
-      KeepComments: true,
-      ...(Variant === undefined ? {} : { Variant }),
-      ...(Filename === undefined ? {} : { Filename }),
-    },
-    print,
-  };
-}
-
-/** The parser accepts either filename representation; caller-facing errors always expose text. */
-function decodeFilename(filename: FormatOptions['Filename']): string | undefined {
-  return filename instanceof Uint8Array ? new TextDecoder().decode(filename) : filename;
 }
 
 /**
@@ -51,7 +33,7 @@ function decodeFilename(filename: FormatOptions['Filename']): string | undefined
  * A conservative file refusal avoids duplicating shell lexing to decide where each byte is data.
  */
 // ShellSourceCode.getPrintedReplacement in shell-source-code.ts independently guards edited syntax.
-function refusePrinterControlCharacters(text: string, filename: ParseOptions['Filename']): void {
+function refusePrinterControlCharacters(text: string, filename: string | undefined): void {
   const index = text.search(/[\v\f]/u);
   if (index === -1) return;
   const before = text.slice(0, index);
@@ -60,8 +42,7 @@ function refusePrinterControlCharacters(text: string, filename: ParseOptions['Fi
   const col = encoder.encode(before.slice(before.lastIndexOf('\n') + 1)).length + 1;
   const reason =
     'literal vertical tabs and form feeds are not supported: the printer changes their value';
-  const decodedFilename = decodeFilename(filename);
-  const prefix = decodedFilename ? `${decodedFilename}:` : '';
+  const prefix = filename ? `${filename}:` : '';
   throw new ParseError(
     `${prefix}${String(line)}:${String(col)}: ${reason}`,
     filename ?? '',
@@ -87,27 +68,32 @@ function refusePrinterControlCharacters(text: string, filename: ParseOptions['Fi
  * comments and here-document bodies do. Formatting is idempotent.
  *
  * @param text - Shell source.
- * @param options - Printer options, and the `Variant` dialect (Bash when omitted).
+ * @param options - Printer options, and the project `dialect` (Bash when omitted).
  * @returns The formatted source, ending in a newline.
+ * @throws TypeError with `ESLINT_SH_SERVICE_OPTION` for invalid project options or removed names.
  * @throws {@link FormatSyntaxError} when `text` is not valid in the selected dialect, or
  *   source contains a literal vertical tab or form feed that the printer cannot preserve.
  *   Unicode source characters are preserved by the parser and printer.
- *   Native nesting refusals (`ShParseMaxDepthError`) propagate unchanged.
+ *   Native nesting refusals (`ShParseMaxDepthError`, `SH_AST_PARSE_MAX_DEPTH`) propagate unchanged.
  *   Other `sh-ast` failures (`PrintError` for incompatible printer options such as
- *   `Minify` with `SingleLine`, `InputError` for text that is not well-formed Unicode)
+ *   `Minify` with `SingleLine`, code `SH_AST_SYNTAX_PRINT`; `PrintPanicError`,
+ *   code `SH_AST_SYNTAX_PRINT_PANIC`; `InputError`, code `SH_AST_SYNTAX_INPUT`, for
+ *   malformed Unicode source/filename or rejected upstream printer knobs; and
+ *   bridge failures with `SH_AST_INTERNAL`)
  *   are thrown as they are.
  *
  * @public
  */
 export function format(text: string, options: FormatOptions = {}): string {
-  const { parse, print } = splitOptions(options);
+  const parse = serviceParseOptions('format', options);
+  const { dialect: _dialect, filename: _filename, ...print } = options;
   let printed;
   try {
-    refusePrinterControlCharacters(text, parse.Filename);
+    refusePrinterControlCharacters(text, options.filename);
     printed = printSync(parseSync(text, parse), print);
   } catch (error) {
     if (isSyntaxFailure(error)) {
-      const filename = decodeFilename(options.Filename);
+      const filename = options.filename;
       throw new FormatSyntaxError(error, text, filename);
     }
     throw error;

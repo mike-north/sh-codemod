@@ -30,7 +30,7 @@ function fixtures(character: string): readonly string[] {
 
 describe.each(['\u0080', '\u0081'])('Unicode source character %j', (character) => {
   it.each(fixtures(character))('formats all source text unchanged: %j', (text) => {
-    expect(format(text, { Filename: 'a.sh' })).toBe(text);
+    expect(format(text, { filename: 'a.sh' })).toBe(text);
   });
 
   it('normalizes CRLF without dropping a quoted heredoc body or later code', () => {
@@ -57,7 +57,7 @@ describe.each(['\u0080', '\u0081'])('Unicode source character %j', (character) =
 it('keeps genuine syntax failures positioned after Unicode text', () => {
   const text = 'echo é😀\necho "\u0080\n';
   try {
-    format(text, { Filename: 'a.sh' });
+    format(text, { filename: 'a.sh' });
     throw new Error('expected an unterminated quote to fail');
   } catch (error) {
     expect(error).toBeInstanceOf(FormatSyntaxError);

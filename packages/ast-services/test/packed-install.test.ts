@@ -35,36 +35,52 @@ const REPORT = `{
   errorIsInstance: syntaxError instanceof FormatSyntaxError,
   errorLine: syntaxError.line,
   errorColumn: syntaxError.column,
+  errorFilename: syntaxError.filename,
+  dialectFormatted: format('a=(one two)\\n', { dialect: 'bash', filename: 'array.sh' }),
+  editorText: createEditor('echo 日本語\\n', { dialect: 'posix', filename: 'editor.sh' }).apply(),
+  removedCode: (() => { try { format('echo ok', { Variant: 2 }); } catch (error) { return error.code; } })(),
 }`;
 
 const SYNTAX_ERROR = `(() => {
     try {
-      format('echo ok\\necho "open');
+      format('echo ok\\necho "open', { filename: '日本語.sh' });
     } catch (error) {
       return error;
     }
     throw new Error('no error thrown');
   })()`;
 
-const ESM_CONSUMER = `import { format, FormatSyntaxError } from '@eslint-sh/ast-services';
+const ESM_CONSUMER = `import { format, createEditor, FormatSyntaxError } from '@eslint-sh/ast-services';
 const syntaxError = ${SYNTAX_ERROR};
 console.log(JSON.stringify(${REPORT}));
 `;
 
-const CJS_CONSUMER = `const { format, FormatSyntaxError } = require('@eslint-sh/ast-services');
+const CJS_CONSUMER = `const { format, createEditor, FormatSyntaxError } = require('@eslint-sh/ast-services');
 const syntaxError = ${SYNTAX_ERROR};
 console.log(JSON.stringify(${REPORT}));
 `;
 
 /** Type-only consumers: one per module system, each using a value and a type from the package. */
-const ESM_TYPES = `import { format, FormatSyntaxError, type FormatOptions } from '@eslint-sh/ast-services';
-export const options: FormatOptions = { Indent: 2, Variant: 2, Filename: 'a.sh' };
+const ESM_TYPES = `import { format, createEditor, FormatSyntaxError, type FormatOptions, type EditorOptions, type ShellDialect } from '@eslint-sh/ast-services';
+export const dialect: ShellDialect = 'posix';
+export const options: FormatOptions = { Indent: 2, dialect, filename: 'a.sh' };
+export const editorOptions: EditorOptions = { dialect, filename: 'a.sh' };
+createEditor('echo hi', editorOptions);
+// @ts-expect-error removed parser vocabulary is not a formatter option
+format('echo hi', { Variant: 2 });
+// @ts-expect-error removed parser vocabulary is not an editor option
+createEditor('echo hi', { Filename: 'old.sh' });
 export const text: string = format('echo hi', options);
 export const line: number = new Error() instanceof FormatSyntaxError ? 1 : 0;
 `;
 
 const CJS_TYPES = `import services = require('@eslint-sh/ast-services');
-export const options: services.FormatOptions = { SwitchCaseIndent: true };
+export const dialect: services.ShellDialect = 'bash';
+export const options: services.FormatOptions = { SwitchCaseIndent: true, dialect, filename: 'cjs.sh' };
+export const editorOptions: services.EditorOptions = { dialect, filename: 'cjs.sh' };
+services.createEditor('echo hi', editorOptions);
+// @ts-expect-error removed option names are rejected in CommonJS types too
+services.format('echo hi', { Filename: 'old.sh' });
 export const text: string = services.format('echo hi', options);
 export const code: 'ESLINT_SH_FORMAT_SYNTAX' | undefined = undefined as services.FormatSyntaxError['code'] | undefined;
 `;
@@ -76,6 +92,10 @@ const EXPECTED_REPORT = {
   errorIsInstance: true,
   errorLine: 2,
   errorColumn: 6,
+  errorFilename: '日本語.sh',
+  dialectFormatted: 'a=(one two)\n',
+  editorText: 'echo 日本語\n',
+  removedCode: 'ESLINT_SH_SERVICE_OPTION',
 };
 
 /** Packs the package with pnpm into `destination` and returns the tarball path. */
@@ -188,6 +208,15 @@ describe('packed install (issue #180, criterion 7)', () => {
     expect(files.filter((file) => file.endsWith('.map'))).toEqual([]);
     const entry = readFileSync(join(packageRoot, 'dist', 'index.js'), 'utf8');
     expect(entry).not.toContain('sourceMappingURL');
+  });
+
+  it('installs without an ESLint runtime dependency', () => {
+    const installedRequire = createRequire(join(projectDir, 'consumer.cjs'));
+    expect(() => installedRequire.resolve('eslint')).toThrow();
+    const manifest = JSON.parse(
+      readFileSync(installedRequire.resolve('@eslint-sh/ast-services/package.json'), 'utf8'),
+    ) as { dependencies: Record<string, string> };
+    expect(Object.keys(manifest.dependencies)).toEqual(['sh-ast']);
   });
 
   it('exposes ./package.json through exports', () => {

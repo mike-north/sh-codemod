@@ -63,7 +63,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-cjs.mjs && node ../../scripts/rollup-declarations.mjs api-extractor.json && node scripts/copy-cjs-types.mjs",
+    "build": "node ../../scripts/materialize-shared-source.mjs && tsc -p tsconfig.json && node scripts/build-cjs.mjs && node ../../scripts/rollup-declarations.mjs api-extractor.json && node scripts/copy-cjs-types.mjs",
     "check": "concurrently -n lint,types,api-report \"pnpm run check:lint-ts\" \"pnpm run check:typecheck\" \"pnpm run check:api-report\"",
     "check:api-report": "api-extractor run",
     "check:lint-ts": "eslint .",

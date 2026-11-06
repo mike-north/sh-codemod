@@ -45,27 +45,26 @@ format('if true;then\n    echo   hi # greet\nfi');
 
 ### Options
 
-`FormatOptions` is `sh-ast`'s `PrintOptions` plus two of its `ParseOptions`, so the option names
-and meanings are those of the pinned mvdan/sh and do not drift from it.
+`FormatOptions` combines the project's `dialect` and `filename` with `sh-ast`'s
+`PrintOptions`. Printer knobs retain the pinned mvdan/sh spellings and meanings.
 
-| Option             | Type               | Default    | Effect                                                                                                                              |
-| ------------------ | ------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `Indent`           | `number \| bigint` | `0` (tabs) | Spaces per indentation level; `0` indents with tabs.                                                                                |
-| `BinaryNextLine`   | `boolean`          | `false`    | Put a multiline binary operator such as `\|` on the next line, after a `\`.                                                         |
-| `SwitchCaseIndent` | `boolean`          | `false`    | Indent `case` alternatives; their bodies go two levels below the `case`.                                                            |
-| `SpaceRedirects`   | `boolean`          | `false`    | Space after redirection operators (`> out`), except `>&`, `<&`, `>(` and `<(`.                                                      |
-| `FunctionNextLine` | `boolean`          | `false`    | Put a function's opening brace on the next line.                                                                                    |
-| `Minify`           | `boolean`          | `false`    | Drop comments, indentation and optional whitespace. Not allowed with `SingleLine`.                                                  |
-| `SingleLine`       | `boolean`          | `false`    | Print on one line where possible (newlines after comments and around here-documents remain).                                        |
-| `KeepPadding`      | `boolean`          | `false`    | Best-effort column preservation. Deprecated upstream, which plans to remove it.                                                     |
-| `Variant`          | `number \| bigint` | Bash       | Dialect to parse: `LangBash`, `LangPOSIX`, `LangMirBSDKorn`, `LangBats` or `LangZsh`, exported by `sh-ast`. `LangAuto` is rejected. |
-| `Filename`         | `string`           | none       | Name used in syntax-error messages and on `FormatSyntaxError.filename`.                                                             |
+| Option             | Type               | Default    | Effect                                                                                       |
+| ------------------ | ------------------ | ---------- | -------------------------------------------------------------------------------------------- |
+| `Indent`           | `number \| bigint` | `0` (tabs) | Spaces per indentation level; `0` indents with tabs.                                         |
+| `BinaryNextLine`   | `boolean`          | `false`    | Put a multiline binary operator such as `\|` on the next line, after a `\`.                  |
+| `SwitchCaseIndent` | `boolean`          | `false`    | Indent `case` alternatives; their bodies go two levels below the `case`.                     |
+| `SpaceRedirects`   | `boolean`          | `false`    | Space after redirection operators (`> out`), except `>&`, `<&`, `>(` and `<(`.               |
+| `FunctionNextLine` | `boolean`          | `false`    | Put a function's opening brace on the next line.                                             |
+| `Minify`           | `boolean`          | `false`    | Drop comments, indentation and optional whitespace. Not allowed with `SingleLine`.           |
+| `SingleLine`       | `boolean`          | `false`    | Print on one line where possible (newlines after comments and around here-documents remain). |
+| `KeepPadding`      | `boolean`          | `false`    | Best-effort column preservation. Deprecated upstream, which plans to remove it.              |
+| `dialect`          | `ShellDialect`     | `"bash"`   | Grammar label: `"bash"`, `"posix"`, `"mksh"`, `"bats"` or `"zsh"`.                           |
+| `filename`         | `string`           | none       | Name used in syntax-error messages and on `FormatSyntaxError.filename`.                      |
 
 ```js
-import { LangPOSIX } from 'sh-ast';
 import { format } from '@eslint-sh/ast-services';
 
-format(script, { Indent: 2, SwitchCaseIndent: true, Variant: LangPOSIX, Filename: 'deploy.sh' });
+format(script, { Indent: 2, SwitchCaseIndent: true, dialect: 'posix', filename: 'deploy.sh' });
 ```
 
 Not exposed, on purpose: `RecoverErrors` would let malformed input through as a repaired tree,
@@ -84,14 +83,14 @@ Idempotence was checked for every other printer option alone and in combinations
 
 ### Errors
 
-A syntax error, including a construct the selected `Variant` does not allow, throws
+A syntax error, including a construct the selected `dialect` does not allow, throws
 `FormatSyntaxError`. `format` never returns partial output.
 
 ```js
 import { format, FormatSyntaxError } from '@eslint-sh/ast-services';
 
 try {
-  format('echo ok\necho "never closed\n', { Filename: 'a.sh' });
+  format('echo ok\necho "never closed\n', { filename: 'a.sh' });
 } catch (error) {
   if (error instanceof FormatSyntaxError) {
     error.message; // 'a.sh:2:6: reached EOF without closing quote `"`'
@@ -109,12 +108,12 @@ try {
 | `line`       | One-based line; a `\r\n` pair is one line break.                                     |
 | `column`     | One-based UTF-16 column, as ESLint reports it.                                       |
 | `byteOffset` | The parser's zero-based UTF-8 offset, for tools that address bytes.                  |
-| `filename`   | The `Filename` option, if given.                                                     |
+| `filename`   | The `filename` option, if given.                                                     |
 | `cause`      | The underlying `sh-ast` `ParseError` or `LangError`.                                 |
 
 Other `sh-ast` failures are thrown as they are: `PrintError` for incompatible printer options
 (`Minify` together with `SingleLine`), and `InputError` for text that is not well-formed Unicode
-or an unsupported `Variant`.
+or a rejected upstream printer option. Invalid project options throw `TypeError` with `ESLINT_SH_SERVICE_OPTION` before parsing. `Variant` and `Filename` are not accepted.
 
 ## `createEditor(text, options?)`
 
@@ -161,8 +160,7 @@ The editor is `{ ast, replaceNode, insertBefore, apply }`:
 | `insertBefore(node, text)`   | Queue inserting `text` immediately before the node's first character.                           |
 | `apply()`                    | Return the original text with all queued edits applied. May be called again after queuing more. |
 
-`options` are `sh-ast`'s `ParseOptions` (dialect through `Variant`, and so on); comments are kept
-unless you say otherwise. A parse failure throws the `sh-ast` error unchanged.
+`options` are `{ dialect?: ShellDialect, filename?: string }`, with Bash as the default. Comments are always kept. Removed parser-option spellings are rejected. A parse failure throws the `sh-ast` error unchanged.
 
 ### Edit rules
 
@@ -210,17 +208,19 @@ mvdan/sh printer, behind Prettier. This package calls the printer directly, so t
 Prettier dependency and the printer options version-lock to the `sh-ast` this package pins.
 Compared with its [documented options](https://www.npmjs.com/package/prettier-plugin-sh) (v0.20):
 
-| prettier-plugin-sh                                                                                                                                                  | `@eslint-sh/ast-services`                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runs inside Prettier; formats by file type                                                                                                                          | A function on strings: `format(text, options)`. No file discovery, no config files, no CLI.                                                                          |
-| Also formats Dockerfile, `.properties`, `.gitignore`, dotenv, hosts, jvmoptions                                                                                     | Shell only.                                                                                                                                                          |
-| Option names are camelCase (`indent`, `binaryNextLine`, `switchCaseIndent`, `spaceRedirects`, `keepPadding`, `minify`, `singleLine`, `functionNextLine`, `variant`) | The printer's own spellings: `Indent`, `BinaryNextLine`, `SwitchCaseIndent`, `SpaceRedirects`, `KeepPadding`, `Minify`, `SingleLine`, `FunctionNextLine`, `Variant`. |
-| `binaryNextLine` documented as default `true`                                                                                                                       | `BinaryNextLine` defaults to `false`: every printer option is off unless you set it.                                                                                 |
-| `keepComments` documented as default `true`                                                                                                                         | Comments are always kept (except under `Minify`); there is no option.                                                                                                |
-| `simplify` option (removes redundant syntax)                                                                                                                        | Not available: `sh-ast` exposes the printer, not mvdan/sh's `Simplify`.                                                                                              |
-| `stopAt` and `recoverErrors` parser options                                                                                                                         | Not exposed, because they can drop or repair code. See above.                                                                                                        |
-| Indentation also follows Prettier's `useTabs` / `tabWidth`                                                                                                          | Only `Indent`.                                                                                                                                                       |
-| Syntax errors surface as Prettier errors                                                                                                                            | `FormatSyntaxError` with UTF-16 `offset`, `line` and `column`.                                                                                                       |
+| prettier-plugin-sh                                                                                                                                                  | `@eslint-sh/ast-services`                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runs inside Prettier; formats by file type                                                                                                                          | A function on strings: `format(text, options)`. No file discovery, no config files, no CLI.                                                                                                                                             |
+| Also formats Dockerfile, `.properties`, `.gitignore`, dotenv, hosts, jvmoptions                                                                                     | Shell only.                                                                                                                                                                                                                             |
+| Option names are camelCase (`indent`, `binaryNextLine`, `switchCaseIndent`, `spaceRedirects`, `keepPadding`, `minify`, `singleLine`, `functionNextLine`, `variant`) | The printer's own spellings: `Indent`, `BinaryNextLine`, `SwitchCaseIndent`, `SpaceRedirects`, `KeepPadding`, `Minify`, `SingleLine`, `FunctionNextLine`. Grammar and source names use the project vocabulary `dialect` and `filename`. |
+| `binaryNextLine` documented as default `true`                                                                                                                       | `BinaryNextLine` defaults to `false`: every printer option is off unless you set it.                                                                                                                                                    |
+| `keepComments` documented as default `true`                                                                                                                         | Comments are always kept (except under `Minify`); there is no option.                                                                                                                                                                   |
+| `simplify` option (removes redundant syntax)                                                                                                                        | Not available: `sh-ast` exposes the printer, not mvdan/sh's `Simplify`.                                                                                                                                                                 |
+| `stopAt` and `recoverErrors` parser options                                                                                                                         | Not exposed, because they can drop or repair code. See above.                                                                                                                                                                           |
+| Indentation also follows Prettier's `useTabs` / `tabWidth`                                                                                                          | Only `Indent`.                                                                                                                                                                                                                          |
+| Syntax errors surface as Prettier errors                                                                                                                            | `FormatSyntaxError` with UTF-16 `offset`, `line` and `column`.                                                                                                                                                                          |
 
 The defaults above come from the plugin's published README; if you migrate, set the options
 explicitly (for example `BinaryNextLine: true`) to get the output you had before.
+
+The [canonical error-code reference](https://github.com/mike-north/eslint-sh/blob/main/packages/eslint-plugin/docs/error-codes.md) lists service, plugin and dependency failure identities. Match codes rather than message text.
