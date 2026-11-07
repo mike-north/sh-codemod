@@ -74,7 +74,9 @@ export class ForeignNodeError extends Error {
    * @param node - The node that this editor's parse did not produce.
    */
   constructor(node: Node) {
-    super(`Cannot edit a ${node.Type} node that does not belong to this editor's parse`);
+    super(
+      `Cannot edit a ${node.Type} node that does not belong to this editor's parse`,
+    );
     this.name = 'ForeignNodeError';
     this.node = node;
   }
@@ -102,7 +104,9 @@ export class InvalidNodeError extends Error {
    * @param received - The value that was passed where a node was required.
    */
   constructor(received: unknown) {
-    super(`Expected a syntax node from this editor's \`ast\`, received ${describe(received)}`);
+    super(
+      `Expected a syntax node from this editor's \`ast\`, received ${describe(received)}`,
+    );
     this.name = 'InvalidNodeError';
     this.received = received;
   }

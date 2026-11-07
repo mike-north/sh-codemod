@@ -12,19 +12,36 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 
 /** A failed compiler or module conversion must refuse packaging rather than leave partial output. */
 function run(args: readonly string[]): void {
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit' });
-  if (result.error) { throw result.error; }
-  if (result.status !== 0) { process.exit(result.status ?? 1); }
+  const result = spawnSync(process.execPath, args, {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
 }
 
 rmSync(new URL('../dist/', import.meta.url), { recursive: true, force: true });
-run([require.resolve('typescript/bin/tsc'), '-p', 'tsconfig.json']);
-run(['scripts/build-cjs.mjs']);
+run([require.resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json']);
+run(['scripts/build-cjs.mts']);
 /** Build writes the declaration rollup; API report verification stays a separate read-only check. */
-const configPath = fileURLToPath(new URL('../api-extractor.json', import.meta.url));
+const configPath = fileURLToPath(
+  new URL('../api-extractor.json', import.meta.url),
+);
 const config = ExtractorConfig.loadFile(configPath);
 config.dtsRollup = { ...config.dtsRollup, enabled: true };
 config.apiReport = { ...config.apiReport, enabled: false };
-const result = Extractor.invoke(ExtractorConfig.prepare({ configObject: config, configObjectFullPath: configPath, packageJsonFullPath: `${root}package.json` }));
-if (!result.succeeded) { process.exit(1); }
-run(['scripts/copy-cjs-types.mjs']);
+const result = Extractor.invoke(
+  ExtractorConfig.prepare({
+    configObject: config,
+    configObjectFullPath: configPath,
+    packageJsonFullPath: `${root}package.json`,
+  }),
+);
+if (!result.succeeded) {
+  process.exit(1);
+}
+run(['scripts/copy-cjs-types.mts']);

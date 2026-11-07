@@ -1,0 +1,11 @@
+{
+  "singleQuote": true,
+  "overrides": [
+    {
+      "files": ".github/workflows/ci.yml",
+      "options": {
+        "parser": "json"
+      }
+    }
+  ]
+}

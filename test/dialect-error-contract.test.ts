@@ -3,7 +3,6 @@ import { LangBats, LangMirBSDKorn, LangZsh } from 'sh-ast';
 import { LangBash, LangPOSIX } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import { createEditor, format, FormatSyntaxError } from '../src/index.js';
-import type { FormatOptions } from '../src/index.js';
 
 /** Capture a real boundary error without translating its identity. */
 function failure(run: () => unknown): Error {
@@ -25,7 +24,7 @@ describe('project dialect and filename options', () => {
     [LangZsh, 'function one two { true; }\n'],
   ] as const)('accepts %s in both services', (dialect, text) => {
     // These fixtures verify producer dialect behavior at both service boundaries.
-    const options = { dialect } as unknown as FormatOptions;
+    const options = { dialect };
     expect(format(text, options)).toContain(
       dialect === LangBats
         ? '@test'
@@ -46,7 +45,7 @@ describe('project dialect and filename options', () => {
     );
   });
   it('uses filename in actual syntax diagnostics without reclassifying syntax as configuration', () => {
-    const options = { dialect: LangPOSIX, filename: '漢字.sh' } as unknown as FormatOptions;
+    const options = { dialect: LangPOSIX, filename: '漢字.sh' };
     const formatted = failure(() => format('if\n', options));
     expect(formatted).toBeInstanceOf(FormatSyntaxError);
     expect(formatted).toMatchObject({
@@ -55,7 +54,10 @@ describe('project dialect and filename options', () => {
       cause: { code: 'SH_AST_SYNTAX_PARSE' },
     });
     const edited = failure(() => createEditor('if\n', options));
-    expect(edited).toMatchObject({ code: 'SH_AST_SYNTAX_PARSE', Filename: '漢字.sh' });
+    expect(edited).toMatchObject({
+      code: 'SH_AST_SYNTAX_PARSE',
+      Filename: '漢字.sh',
+    });
   });
   it.each([
     [{ dialect: null }, 'dialect', 'null'],
@@ -64,22 +66,27 @@ describe('project dialect and filename options', () => {
     [{ filename: 12 }, 'filename', '12'],
     [{ Variant: undefined }, 'Variant', 'undefined'],
     [{ Filename: 'old.sh' }, 'Filename', '"old.sh"'],
-  ] as const)('rejects removed or invalid options %s', (options, path, received) => {
-    for (const service of [format, createEditor]) {
-      const error = failure(() => service('echo hi\n', options as unknown as FormatOptions));
-      expect(error.constructor).toBe(TypeError);
-      expect(error).toHaveProperty('code', 'SH_CODEMOD_SERVICE_OPTION');
-      expect(error.message).toMatch(
-        new RegExp(`^${service.name} options.${path}: .+; received `, 'u'),
-      );
-      expect(error.message.endsWith(`; received ${received}.`)).toBe(true);
-    }
-  });
+  ] as const)(
+    'rejects removed or invalid options %s',
+    (options, path, received) => {
+      for (const service of [format, createEditor]) {
+        // @ts-expect-error Deliberately exercise JavaScript callers with options outside the public contract.
+        const error = failure(() => service('echo hi\n', options));
+        expect(error.constructor).toBe(TypeError);
+        expect(error).toHaveProperty('code', 'SH_CODEMOD_SERVICE_OPTION');
+        expect(error.message).toMatch(
+          new RegExp(`^${service.name} options.${path}: .+; received `, 'u'),
+        );
+        expect(error.message.endsWith(`; received ${received}.`)).toBe(true);
+      }
+    },
+  );
 });
 
 it('rejects upstream editor parser knobs instead of silently ignoring removed controls', () => {
   const error = failure(() =>
-    createEditor('echo hi\n', { KeepComments: false } as unknown as FormatOptions),
+    // @ts-expect-error Deliberately exercise JavaScript callers with options outside the public contract.
+    createEditor('echo hi\n', { KeepComments: false }),
   );
   expect(error).toHaveProperty('code', 'SH_CODEMOD_SERVICE_OPTION');
   expect(error.message).toContain('createEditor options.KeepComments: ');
@@ -89,7 +96,8 @@ it.each([1n, Symbol('dialect'), { value: undefined }])(
   'keeps service option errors stable for non-JSON dialect values: %s',
   (dialect) => {
     for (const service of [format, createEditor]) {
-      const error = failure(() => service('echo hi\n', { dialect } as unknown as FormatOptions));
+      // @ts-expect-error Deliberately exercise JavaScript callers with options outside the public contract.
+      const error = failure(() => service('echo hi\n', { dialect }));
       expect(error.constructor).toBe(TypeError);
       expect(error).toHaveProperty('code', 'SH_CODEMOD_SERVICE_OPTION');
       expect(error.message).toContain(`${service.name} options.dialect: `);

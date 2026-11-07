@@ -1,0 +1,8 @@
+AGENTS.md
+api-report/
+docs/api/
+dist/
+node_modules/
+scratch/
+temp/
+.tmp/

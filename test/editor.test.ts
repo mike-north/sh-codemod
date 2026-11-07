@@ -13,6 +13,7 @@
  *
  * Every expected string is written out by hand.
  */
+import assert from 'node:assert/strict';
 import { walk, type Node } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import {
@@ -22,6 +23,15 @@ import {
   InvalidNodeError,
   type Editor,
 } from '../src/index.js';
+
+/** Require an existing fixture node so a missing parser result fails at the lookup. */
+function required<T>(value: T | undefined): T {
+  assert.notEqual(value, undefined);
+  if (value === undefined) {
+    throw new Error('Expected fixture node');
+  }
+  return value;
+}
 
 /** Returns every node of the given `Type` in source order. */
 function nodesOfType(editor: Editor, type: string): Node[] {
@@ -35,7 +45,9 @@ function nodesOfType(editor: Editor, type: string): Node[] {
 
 /** Returns the `Lit` nodes whose value is `value`, in source order. */
 function lits(editor: Editor, value: string): Node[] {
-  return nodesOfType(editor, 'Lit').filter((n) => n.Type === 'Lit' && n.Value === value);
+  return nodesOfType(editor, 'Lit').filter(
+    (n) => n.Type === 'Lit' && n.Value === value,
+  );
 }
 
 /** Runs `fn` and returns what it throws, failing if it does not throw. */
@@ -59,8 +71,8 @@ describe('editor shape', () => {
 
   it('replaces a node and inserts before another', () => {
     const editor = createEditor('echo a b\n');
-    editor.replaceNode(lits(editor, 'b')[0], 'BEE');
-    editor.insertBefore(lits(editor, 'a')[0], '>');
+    editor.replaceNode(required(lits(editor, 'b')[0]), 'BEE');
+    editor.insertBefore(required(lits(editor, 'a')[0]), '>');
     expect(editor.apply()).toBe('echo >a BEE\n');
   });
 
@@ -70,8 +82,8 @@ describe('editor shape', () => {
 
   it('can apply repeatedly, and queued edits are applied by position not call order', () => {
     const editor = createEditor('a b c\n');
-    editor.replaceNode(lits(editor, 'c')[0], 'C');
-    editor.replaceNode(lits(editor, 'a')[0], 'A');
+    editor.replaceNode(required(lits(editor, 'c')[0]), 'C');
+    editor.replaceNode(required(lits(editor, 'a')[0]), 'A');
     expect(editor.apply()).toBe('A b C\n');
     expect(editor.apply()).toBe('A b C\n');
   });
@@ -87,34 +99,38 @@ describe('preservation', () => {
   it('keeps comments, odd spacing, blank lines and CRLF outside the edit', () => {
     const text = '# lead\r\n\r\necho   old    # trail\r\n\r\n\r\nls\t-l\r\n';
     const editor = createEditor(text);
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
-    expect(editor.apply()).toBe('# lead\r\n\r\necho   new    # trail\r\n\r\n\r\nls\t-l\r\n');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
+    expect(editor.apply()).toBe(
+      '# lead\r\n\r\necho   new    # trail\r\n\r\n\r\nls\t-l\r\n',
+    );
   });
 
   it('keeps a here-document body byte for byte around an edit to its command', () => {
     const text = "cat   <<'EOF'\n  keep   $HOME\nEOF\necho  old\n";
     const editor = createEditor(text);
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
-    expect(editor.apply()).toBe("cat   <<'EOF'\n  keep   $HOME\nEOF\necho  new\n");
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
+    expect(editor.apply()).toBe(
+      "cat   <<'EOF'\n  keep   $HOME\nEOF\necho  new\n",
+    );
   });
 
   it('edits a comment node that stands on its own line', () => {
     const editor = createEditor('\n# old\n');
-    editor.replaceNode(nodesOfType(editor, 'Comment')[0], '# new');
+    editor.replaceNode(required(nodesOfType(editor, 'Comment')[0]), '# new');
     expect(editor.apply()).toBe('\n# new\n');
   });
 
   it('keeps the carriage return when the edited word ends a CRLF line', () => {
     const editor = createEditor('echo old\r\necho b\r\n');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
-    editor.replaceNode(nodesOfType(editor, 'Stmt')[1], 'ls');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
+    editor.replaceNode(required(nodesOfType(editor, 'Stmt')[1]), 'ls');
     expect(editor.apply()).toBe('echo new\r\nls\r\n');
   });
 
   it('does not reprint: an unedited statement with irregular layout is untouched', () => {
     const text = 'if   true;then\n   echo   x\nfi\necho  old\n';
     const editor = createEditor(text);
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
     expect(editor.apply()).toBe('if   true;then\n   echo   x\nfi\necho  new\n');
   });
 });
@@ -122,8 +138,9 @@ describe('preservation', () => {
 describe('here-document bodies', () => {
   /** The last `Lit` of the first here-document body. */
   function bodyLit(editor: Editor): Node {
-    const redirect = nodesOfType(editor, 'Redirect')[0];
-    if (redirect.Type !== 'Redirect' || !redirect.Hdoc) throw new Error('no here-document');
+    const redirect = required(nodesOfType(editor, 'Redirect')[0]);
+    if (redirect.Type !== 'Redirect' || !redirect.Hdoc)
+      throw new Error('no here-document');
     const parts = redirect.Hdoc.Parts ?? [];
     const last = parts[parts.length - 1];
     if (!last) throw new Error('empty body');
@@ -145,8 +162,9 @@ describe('here-document bodies', () => {
 
   it('keeps the delimiter when the whole body Word (Redirect.Hdoc) is replaced', () => {
     const editor = createEditor('cat <<EOF\nhello\nEOF\necho x\n');
-    const redirect = nodesOfType(editor, 'Redirect')[0];
-    if (redirect.Type !== 'Redirect' || !redirect.Hdoc) throw new Error('no here-document');
+    const redirect = required(nodesOfType(editor, 'Redirect')[0]);
+    if (redirect.Type !== 'Redirect' || !redirect.Hdoc)
+      throw new Error('no here-document');
     editor.replaceNode(redirect.Hdoc, 'new\n');
     expect(editor.apply()).toBe('cat <<EOF\nnew\nEOF\necho x\n');
   });
@@ -187,7 +205,7 @@ describe('here-document bodies', () => {
 
   it('still lets the whole redirect, delimiter included, be replaced', () => {
     const editor = createEditor('cat <<EOF\nhello\nEOF\necho x\n');
-    editor.replaceNode(nodesOfType(editor, 'Redirect')[0], '<in');
+    editor.replaceNode(required(nodesOfType(editor, 'Redirect')[0]), '<in');
     expect(editor.apply()).toBe('cat <in\necho x\n');
   });
 
@@ -200,19 +218,23 @@ describe('here-document bodies', () => {
 
 describe('comments attached to statements', () => {
   it('edits leading, middle, trailing and final comments, byte-exact around multibyte text', () => {
-    const editor = createEditor('# top é\necho a # trail 🎉\n# mid\necho b\n# last\n');
+    const editor = createEditor(
+      '# top é\necho a # trail 🎉\n# mid\necho b\n# last\n',
+    );
     const comments = nodesOfType(editor, 'Comment');
     expect(comments.length).toBe(4);
-    editor.replaceNode(comments[0], '# TOP');
-    editor.replaceNode(comments[1], '# TRAIL');
-    editor.replaceNode(comments[2], '# MID');
-    editor.replaceNode(comments[3], '# LAST');
-    expect(editor.apply()).toBe('# TOP\necho a # TRAIL\n# MID\necho b\n# LAST\n');
+    editor.replaceNode(required(comments[0]), '# TOP');
+    editor.replaceNode(required(comments[1]), '# TRAIL');
+    editor.replaceNode(required(comments[2]), '# MID');
+    editor.replaceNode(required(comments[3]), '# LAST');
+    expect(editor.apply()).toBe(
+      '# TOP\necho a # TRAIL\n# MID\necho b\n# LAST\n',
+    );
   });
 
   it('inserts before an attached comment and keeps CRLF', () => {
     const editor = createEditor('echo a # c\r\necho b\r\n');
-    editor.insertBefore(nodesOfType(editor, 'Comment')[0], '# note ');
+    editor.insertBefore(required(nodesOfType(editor, 'Comment')[0]), '# note ');
     expect(editor.apply()).toBe('echo a # note # c\r\necho b\r\n');
   });
 
@@ -231,12 +253,12 @@ describe('comments attached to statements', () => {
     const different = createEditor('echo a # z\n');
     expect(
       thrown(() => {
-        editor.replaceNode(nodesOfType(other, 'Comment')[0], '#');
+        editor.replaceNode(required(nodesOfType(other, 'Comment')[0]), '#');
       }),
     ).toBeInstanceOf(ForeignNodeError);
     expect(
       thrown(() => {
-        editor.replaceNode(nodesOfType(different, 'Comment')[0], '#');
+        editor.replaceNode(required(nodesOfType(different, 'Comment')[0]), '#');
       }),
     ).toBeInstanceOf(ForeignNodeError);
   });
@@ -251,23 +273,26 @@ describe('invalid arguments', () => {
         editor.replaceNode(bad, 'y');
       });
       expect(error).toBeInstanceOf(InvalidNodeError);
-      expect((error as InvalidNodeError).code).toBe('SH_CODEMOD_EDIT_INVALID_NODE');
-      expect((error as InvalidNodeError).received).toBe(bad);
+      assert.ok(error instanceof InvalidNodeError);
+      expect(error.code).toBe('SH_CODEMOD_EDIT_INVALID_NODE');
+      expect(error.received).toBe(bad);
     }
-    for (const bad of [[], [lits(editor, 'x')[0]], {}, { Type: 3 }]) {
+    for (const bad of [[], [required(lits(editor, 'x')[0])], {}, { Type: 3 }]) {
       const error = thrown(() => {
         // @ts-expect-error deliberately violating the types, as a JavaScript caller can
         editor.replaceNode(bad, 'y');
       });
       expect(error).toBeInstanceOf(InvalidNodeError);
-      expect((error as InvalidNodeError).received).toBe(bad);
+      assert.ok(error instanceof InvalidNodeError);
+      expect(error.received).toBe(bad);
     }
     const error = thrown(() => {
       // @ts-expect-error deliberately violating the types, as a JavaScript caller can
       editor.insertBefore(undefined, 'y');
     });
     expect(error).toBeInstanceOf(InvalidNodeError);
-    expect((error as Error).message).toBe(
+    assert.ok(error instanceof InvalidNodeError);
+    expect(error.message).toBe(
       "Expected a syntax node from this editor's `ast`, received undefined",
     );
   });
@@ -276,39 +301,39 @@ describe('invalid arguments', () => {
 describe('multibyte ranges', () => {
   it('lands an edit after emoji (4-byte, 2 UTF-16 units)', () => {
     const editor = createEditor('echo 🎉🎉 old\n');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
     expect(editor.apply()).toBe('echo 🎉🎉 new\n');
   });
 
   it('replaces a word that is itself emoji', () => {
     const editor = createEditor('echo a🎉b tail\n');
-    editor.replaceNode(lits(editor, 'a🎉b')[0], 'X');
+    editor.replaceNode(required(lits(editor, 'a🎉b')[0]), 'X');
     expect(editor.apply()).toBe('echo X tail\n');
   });
 
   it('lands an edit after CJK (3-byte, 1 UTF-16 unit)', () => {
     const editor = createEditor('echo 你好世界 old 日本語\n');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
-    editor.replaceNode(lits(editor, '日本語')[0], '語');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
+    editor.replaceNode(required(lits(editor, '日本語')[0]), '語');
     expect(editor.apply()).toBe('echo 你好世界 new 語\n');
   });
 
   it('lands an edit after combining marks (e + U+0301)', () => {
     const editor = createEditor('echo éé old\n');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
     expect(editor.apply()).toBe('echo éé new\n');
   });
 
   it('lands edits after 2-byte accented text, mixed with CRLF lines', () => {
     const editor = createEditor('echo é\r\necho ñ 🎉 你 old\r\n');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
-    editor.insertBefore(lits(editor, 'ñ')[0], '~');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
+    editor.insertBefore(required(lits(editor, 'ñ')[0]), '~');
     expect(editor.apply()).toBe('echo é\r\necho ~ñ 🎉 你 new\r\n');
   });
 
   it('inserts before a node that follows multibyte characters on the same line', () => {
     const editor = createEditor('echo "🎉" "你" tail\n');
-    editor.insertBefore(lits(editor, 'tail')[0], '>');
+    editor.insertBefore(required(lits(editor, 'tail')[0]), '>');
     expect(editor.apply()).toBe('echo "🎉" "你" >tail\n');
   });
 });
@@ -316,8 +341,8 @@ describe('multibyte ranges', () => {
 describe('ordering', () => {
   it('applies adjacent edits separated only by a `;`', () => {
     const editor = createEditor('echo a;b\n');
-    const [a] = lits(editor, 'a');
-    const [b] = lits(editor, 'b');
+    const a = required(lits(editor, 'a')[0]);
+    const b = required(lits(editor, 'b')[0]);
     editor.replaceNode(b, 'B');
     editor.replaceNode(a, 'A');
     expect(editor.apply()).toBe('echo A;B\n');
@@ -325,14 +350,14 @@ describe('ordering', () => {
 
   it('applies a replacement whose end touches the start of the next replacement', () => {
     const editor = createEditor('echo "x"y\n');
-    editor.replaceNode(nodesOfType(editor, 'DblQuoted')[0], '1');
-    editor.replaceNode(lits(editor, 'y')[0], '2');
+    editor.replaceNode(required(nodesOfType(editor, 'DblQuoted')[0]), '1');
+    editor.replaceNode(required(lits(editor, 'y')[0]), '2');
     expect(editor.apply()).toBe('echo 12\n');
   });
 
   it('puts two inserts at one position in call order', () => {
     const editor = createEditor('echo x\n');
-    const x = lits(editor, 'x')[0];
+    const x = required(lits(editor, 'x')[0]);
     editor.insertBefore(x, '1');
     editor.insertBefore(x, '2');
     editor.insertBefore(x, '3');
@@ -341,13 +366,13 @@ describe('ordering', () => {
 
   it("puts an insert at a replaced node's start before the replacement, however it was queued", () => {
     const first = createEditor('echo x\n');
-    const x1 = lits(first, 'x')[0];
+    const x1 = required(lits(first, 'x')[0]);
     first.insertBefore(x1, '<');
     first.replaceNode(x1, 'X');
     expect(first.apply()).toBe('echo <X\n');
 
     const second = createEditor('echo x\n');
-    const x2 = lits(second, 'x')[0];
+    const x2 = required(lits(second, 'x')[0]);
     second.replaceNode(x2, 'X');
     second.insertBefore(x2, '<');
     expect(second.apply()).toBe('echo <X\n');
@@ -355,8 +380,8 @@ describe('ordering', () => {
 
   it('puts an insert at the end of a replaced node after it', () => {
     const editor = createEditor('echo a;b\n');
-    editor.insertBefore(lits(editor, 'b')[0], '+');
-    editor.replaceNode(lits(editor, 'a')[0], 'A');
+    editor.insertBefore(required(lits(editor, 'b')[0]), '+');
+    editor.replaceNode(required(lits(editor, 'a')[0]), 'A');
     expect(editor.apply()).toBe('echo A;+b\n');
   });
 });
@@ -364,11 +389,12 @@ describe('ordering', () => {
 describe('overlap', () => {
   it('throws EditOverlapError when a node and its ancestor are both replaced', () => {
     const editor = createEditor('echo old\n');
-    editor.replaceNode(nodesOfType(editor, 'CallExpr')[0], 'ls');
-    editor.replaceNode(lits(editor, 'old')[0], 'new');
+    editor.replaceNode(required(nodesOfType(editor, 'CallExpr')[0]), 'ls');
+    editor.replaceNode(required(lits(editor, 'old')[0]), 'new');
     const error = thrown(() => editor.apply());
     expect(error).toBeInstanceOf(EditOverlapError);
-    const overlap = error as EditOverlapError;
+    assert.ok(error instanceof EditOverlapError);
+    const overlap = error;
     expect(overlap.code).toBe('SH_CODEMOD_EDIT_OVERLAP');
     expect(overlap.first).toEqual({ range: [0, 8], text: 'ls' });
     expect(overlap.second).toEqual({ range: [5, 8], text: 'new' });
@@ -376,7 +402,7 @@ describe('overlap', () => {
 
   it('throws when one node is replaced twice', () => {
     const editor = createEditor('echo x\n');
-    const x = lits(editor, 'x')[0];
+    const x = required(lits(editor, 'x')[0]);
     editor.replaceNode(x, '1');
     editor.replaceNode(x, '2');
     expect(thrown(() => editor.apply())).toBeInstanceOf(EditOverlapError);
@@ -384,21 +410,21 @@ describe('overlap', () => {
 
   it('throws when an insertion falls strictly inside a replaced node', () => {
     const editor = createEditor('echo "inner"\n');
-    editor.replaceNode(nodesOfType(editor, 'DblQuoted')[0], 'X');
-    editor.insertBefore(lits(editor, 'inner')[0], '>');
+    editor.replaceNode(required(nodesOfType(editor, 'DblQuoted')[0]), 'X');
+    editor.insertBefore(required(lits(editor, 'inner')[0]), '>');
     expect(thrown(() => editor.apply())).toBeInstanceOf(EditOverlapError);
   });
 
   it('throws for partially overlapping ranges, detected in a multibyte file', () => {
     const editor = createEditor('echo 🎉 "a b"\n');
-    editor.replaceNode(nodesOfType(editor, 'DblQuoted')[0], 'Q');
-    editor.replaceNode(nodesOfType(editor, 'Word')[2], 'W');
+    editor.replaceNode(required(nodesOfType(editor, 'DblQuoted')[0]), 'Q');
+    editor.replaceNode(required(nodesOfType(editor, 'Word')[2]), 'W');
     expect(thrown(() => editor.apply())).toBeInstanceOf(EditOverlapError);
   });
 
   it('leaves the editor usable; no partial text was produced', () => {
     const editor = createEditor('echo x\n');
-    const x = lits(editor, 'x')[0];
+    const x = required(lits(editor, 'x')[0]);
     editor.replaceNode(x, '1');
     editor.replaceNode(x, '2');
     expect(thrown(() => editor.apply())).toBeInstanceOf(EditOverlapError);
@@ -410,13 +436,14 @@ describe('foreign nodes', () => {
   it('rejects a node from a different parse of identical text', () => {
     const editor = createEditor('echo x\n');
     const other = createEditor('echo x\n');
-    const foreign = lits(other, 'x')[0];
+    const foreign = required(lits(other, 'x')[0]);
     const error = thrown(() => {
       editor.replaceNode(foreign, 'y');
     });
     expect(error).toBeInstanceOf(ForeignNodeError);
-    expect((error as ForeignNodeError).code).toBe('SH_CODEMOD_EDIT_FOREIGN_NODE');
-    expect((error as ForeignNodeError).node).toBe(foreign);
+    assert.ok(error instanceof ForeignNodeError);
+    expect(error.code).toBe('SH_CODEMOD_EDIT_FOREIGN_NODE');
+    expect(error.node).toBe(foreign);
     expect(
       thrown(() => {
         editor.insertBefore(foreign, 'y');
@@ -427,7 +454,7 @@ describe('foreign nodes', () => {
 
   it('rejects a structuredClone of an own node, whose offsets are stale', () => {
     const editor = createEditor('echo x\n');
-    const copy = structuredClone(lits(editor, 'x')[0]);
+    const copy = structuredClone(required(lits(editor, 'x')[0]));
     expect(
       thrown(() => {
         editor.replaceNode(copy, 'y');

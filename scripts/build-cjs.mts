@@ -24,13 +24,16 @@ writeFileSync(join(cjsDir, 'package.json'), '{ "type": "commonjs" }\n');
 
 for (const entry of readdirSync(esmDir, { withFileTypes: true })) {
   if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
-  const { outputText } = ts.transpileModule(readFileSync(join(esmDir, entry.name), 'utf8'), {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
-      esModuleInterop: false,
+  const { outputText } = ts.transpileModule(
+    readFileSync(join(esmDir, entry.name), 'utf8'),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+        esModuleInterop: false,
+      },
+      fileName: entry.name,
     },
-    fileName: entry.name,
-  });
+  );
   writeFileSync(join(cjsDir, entry.name), outputText);
 }

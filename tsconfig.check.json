@@ -2,12 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": ".",
+    "allowImportingTsExtensions": true
   },
-  "include": [
-    "src",
-    "test",
-    "vitest.config.ts",
-    "scripts/*.mts"
-  ]
+  "include": ["src", "test", "scripts", "eslint.config.ts", "vitest.config.ts"]
 }

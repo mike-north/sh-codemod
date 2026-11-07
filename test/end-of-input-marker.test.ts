@@ -28,31 +28,37 @@ function fixtures(character: string): readonly string[] {
   ];
 }
 
-describe.each(['\u0080', '\u0081'])('Unicode source character %j', (character) => {
-  it.each(fixtures(character))('formats all source text unchanged: %j', (text) => {
-    expect(format(text, { filename: 'a.sh' })).toBe(text);
-  });
+describe.each(['\u0080', '\u0081'])(
+  'Unicode source character %j',
+  (character) => {
+    it.each(fixtures(character))(
+      'formats all source text unchanged: %j',
+      (text) => {
+        expect(format(text, { filename: 'a.sh' })).toBe(text);
+      },
+    );
 
-  it('normalizes CRLF without dropping a quoted heredoc body or later code', () => {
-    const text = `cat <<'EOF'\nabc${character}def\nEOF\neval "$x"\n`;
-    expect(format(text.replaceAll('\n', '\r\n'))).toBe(text);
-  });
+    it('normalizes CRLF without dropping a quoted heredoc body or later code', () => {
+      const text = `cat <<'EOF'\nabc${character}def\nEOF\neval "$x"\n`;
+      expect(format(text.replaceAll('\n', '\r\n'))).toBe(text);
+    });
 
-  it.each(fixtures(character))(
-    'can edit the final statement without losing earlier text: %j',
-    (text) => {
-      const editor = createEditor(text);
-      const last = editor.ast.Stmts?.at(-1);
-      expect(last).toBeDefined();
-      if (last === undefined || last === null) {
-        throw new Error('fixture must contain a final statement');
-      }
-      editor.replaceNode(last, 'true');
-      const start = text.lastIndexOf('\n', text.length - 2) + 1;
-      expect(editor.apply()).toBe(`${text.slice(0, start)}true\n`);
-    },
-  );
-});
+    it.each(fixtures(character))(
+      'can edit the final statement without losing earlier text: %j',
+      (text) => {
+        const editor = createEditor(text);
+        const last = editor.ast.Stmts?.at(-1);
+        expect(last).toBeDefined();
+        if (last === undefined || last === null) {
+          throw new Error('fixture must contain a final statement');
+        }
+        editor.replaceNode(last, 'true');
+        const start = text.lastIndexOf('\n', text.length - 2) + 1;
+        expect(editor.apply()).toBe(`${text.slice(0, start)}true\n`);
+      },
+    );
+  },
+);
 
 it('keeps genuine syntax failures positioned after Unicode text', () => {
   const text = 'echo é😀\necho "\u0080\n';
