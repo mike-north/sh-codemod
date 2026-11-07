@@ -5,7 +5,10 @@ vi.mock('sh-ast', async (importOriginal) => {
   const upstream = await importOriginal<typeof import('sh-ast')>();
   return {
     ...upstream,
-    parseWithPositionsSync(text: string, options: import('sh-ast').ParseOptions) {
+    parseWithPositionsSync(
+      text: string,
+      options: import('sh-ast').ParseOptions,
+    ) {
       const parsed = upstream.parseWithPositionsSync(text, options);
       return {
         ...parsed,
@@ -26,7 +29,8 @@ it('identifies non-character editor bounds and leaves the queue untouched', () =
   const literal = editor.ast.Stmts?.[0]?.Cmd;
   if (literal?.Type !== 'CallExpr') throw new Error('Expected echo call');
   const node = literal.Args?.[1]?.Parts?.[0];
-  if (node === undefined || node === null) throw new Error('Expected emoji literal');
+  if (node === undefined || node === null)
+    throw new Error('Expected emoji literal');
   expect(() => {
     editor.replaceNode(node, 'bad');
   }).toThrow(RangeError);

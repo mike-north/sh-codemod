@@ -13,10 +13,27 @@
     "sh-ast": "0.10.0"
   },
   "devDependencies": {
+    "@changesets/assemble-release-plan": "7.0.0",
+    "@changesets/cli": "3.0.3",
+    "@changesets/config": "4.0.1",
+    "@changesets/parse": "1.0.0",
+    "@changesets/pre": "3.0.0",
+    "@changesets/read": "1.0.1",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@manypkg/get-packages": "3.1.0",
+    "@microsoft/api-documenter": "7.30.20",
     "@microsoft/api-extractor": "7.59.0",
     "@types/node": "24.10.1",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "jiti": "2.7.0",
+    "knip": "6.44.1",
+    "prettier": "3.9.10",
+    "syncpack": "15.3.3",
     "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "typescript-eslint": "8.72.1",
+    "vitest": "4.1.10",
+    "yaml": "2.8.3"
   },
   "exports": {
     ".": {
@@ -42,11 +59,27 @@
   },
   "scripts": {
     "build": "node scripts/build.mts",
-    "check": "pnpm run check:types && pnpm run check:api-report",
+    "check": "pnpm --filter sh-codemod run --parallel --no-bail --aggregate-output '/^check:(types|lint-ts|format|knip|syncpack|changesets|versions|publishing|api-report|ecosystem-map)$/'",
     "check:types": "tsc -p tsconfig.check.json",
-    "check:api-report": "api-extractor run",
-    "fix:api-report": "api-extractor run --local",
-    "test": "vitest run --maxWorkers=2",
-    "prepack": "pnpm run build"
+    "check:api-report": "node scripts/api.ts check",
+    "test": "pnpm test:product && pnpm test:tooling",
+    "prepack": "pnpm run build",
+    "check:lint-ts": "eslint . --max-warnings 0",
+    "check:format": "prettier --check src test scripts *.json *.ts .changeset .github pnpm-workspace.yaml .syncpackrc.json CLAUDE.md docs/tooling.md",
+    "fix:format": "prettier --write src test scripts *.json *.ts .changeset .github pnpm-workspace.yaml .syncpackrc.json CLAUDE.md docs/tooling.md",
+    "check:knip": "knip",
+    "check:syncpack": "syncpack lint",
+    "check:changesets": "node scripts/check-release.ts changesets",
+    "check:versions": "node scripts/check-release.ts versions",
+    "check:release": "pnpm check:changesets && pnpm check:versions",
+    "check:publishing": "node scripts/publishing.ts check",
+    "build:docs": "node scripts/api.ts update",
+    "test:product": "vitest run --maxWorkers=2",
+    "test:tooling": "node --test --test-concurrency=1 scripts/*.test.ts",
+    "test:ecosystem-map": "node --test scripts/ecosystem-map.test.ts",
+    "version:packages": "pnpm check:release && changeset version && pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile && pnpm check:release",
+    "release:plan": "pnpm check:release && node scripts/publishing.ts plan",
+    "release:publish": "pnpm check:release && node scripts/publish.ts .tmp/publish-plan.json",
+    "check:ecosystem-map": "pnpm test:ecosystem-map"
   }
 }

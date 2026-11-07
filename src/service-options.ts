@@ -20,11 +20,14 @@ export function serviceParseOptions(
   service: 'format' | 'createEditor',
   options: IServiceOptions,
 ): ParseOptions {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Preserve caller identity and inherited keys; dictionary values remain unknown until individually checked.
   const input: Record<string, unknown> = options as Record<string, unknown>;
   /** SH_CODEMOD_SERVICE_OPTION means a caller option cannot be honored, before parsing source. */
   function invalid(key: string, detail: string): never {
     throw Object.assign(
-      new TypeError(configurationMessage(`${service} options.${key}`, detail, input[key])),
+      new TypeError(
+        configurationMessage(`${service} options.${key}`, detail, input[key]),
+      ),
       {
         code: 'SH_CODEMOD_SERVICE_OPTION',
       },
@@ -32,7 +35,10 @@ export function serviceParseOptions(
   }
   for (const removed of ['Variant', 'Filename']) {
     if (removed in input) {
-      invalid(removed, 'is not supported; use project dialect/filename options');
+      invalid(
+        removed,
+        'is not supported; use project dialect/filename options',
+      );
     }
   }
   if (service === 'createEditor') {
@@ -51,6 +57,7 @@ export function serviceParseOptions(
     invalid('filename', 'must be a string');
   }
   return {
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- Preserve observations of caller-owned getters; null is rejected during validation.
     Variant: options.dialect === undefined ? LangBash : options.dialect,
     ...(filename === undefined ? {} : { Filename: filename }),
     KeepComments: true,

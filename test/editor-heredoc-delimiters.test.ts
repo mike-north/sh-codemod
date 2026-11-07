@@ -35,7 +35,8 @@ function redirects(editor: Editor): Redirect[] {
 /** The body word (`Redirect.Hdoc`) of the `index`-th redirect, failing if it has none. */
 function body(editor: Editor, index: number): Node {
   const hdoc = redirects(editor)[index]?.Hdoc;
-  if (!hdoc) throw new Error(`redirect ${String(index)} has no here-document body`);
+  if (!hdoc)
+    throw new Error(`redirect ${String(index)} has no here-document body`);
   return hdoc;
 }
 

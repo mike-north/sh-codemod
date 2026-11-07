@@ -14,4 +14,7 @@ import { fileURLToPath } from 'node:url';
 const distDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 mkdirSync(join(distDir, 'cjs'), { recursive: true });
-copyFileSync(join(distDir, 'sh-codemod.d.ts'), join(distDir, 'cjs', 'sh-codemod.d.cts'));
+copyFileSync(
+  join(distDir, 'sh-codemod.d.ts'),
+  join(distDir, 'cjs', 'sh-codemod.d.cts'),
+);

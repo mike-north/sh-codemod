@@ -1,21 +1,65 @@
-# Validate every push and pull request using the standalone package gates.
-# Read-only repository access is sufficient; release and setup authority stay outside CI.
-# JSON is a YAML subset, allowing the local contract test to use Node's built-in parser.
 {
   "name": "CI",
-  "on": { "push": null, "pull_request": null },
-  "permissions": { "contents": "read" },
+  "on": {
+    "push": null,
+    "pull_request": null
+  },
+  "permissions": {
+    "contents": "read"
+  },
   "jobs": {
     "validation": {
       "runs-on": "ubuntu-latest",
       "steps": [
-        { "uses": "actions/checkout@v4", "with": { "persist-credentials": false } },
-        { "uses": "actions/setup-node@v4", "with": { "node-version": "24" } },
-        { "uses": "pnpm/action-setup@v4", "with": { "run_install": false } },
-        { "name": "Frozen install", "run": "env -u NO_COLOR nice pnpm install --frozen-lockfile" },
-        { "name": "Build", "run": "env -u NO_COLOR nice pnpm build" },
-        { "name": "Check", "run": "env -u NO_COLOR nice pnpm check" },
-        { "name": "Test", "run": "env -u NO_COLOR nice pnpm test" }
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "24.14.0"
+          }
+        },
+        {
+          "uses": "pnpm/action-setup@v4",
+          "with": {
+            "run_install": false
+          }
+        },
+        {
+          "name": "Frozen install",
+          "run": "env -u NO_COLOR nice pnpm install --frozen-lockfile"
+        },
+        {
+          "name": "G1: reject major intent",
+          "if": "${{ !cancelled() }}",
+          "run": "env -u NO_COLOR nice pnpm check:changesets"
+        },
+        {
+          "name": "G2: current and complete planned 0.x versions",
+          "if": "${{ !cancelled() }}",
+          "run": "env -u NO_COLOR nice pnpm check:versions"
+        },
+        {
+          "name": "Canonical ecosystem map",
+          "if": "${{ !cancelled() }}",
+          "run": "env -u NO_COLOR nice pnpm test:ecosystem-map"
+        },
+        {
+          "name": "Build",
+          "run": "env -u NO_COLOR nice pnpm build"
+        },
+        {
+          "name": "Check",
+          "run": "env -u NO_COLOR nice pnpm check"
+        },
+        {
+          "name": "Test",
+          "run": "env -u NO_COLOR nice pnpm test"
+        }
       ]
     }
   }
