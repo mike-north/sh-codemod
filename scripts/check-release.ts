@@ -2,12 +2,8 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assembleReleasePlan } from '@changesets/assemble-release-plan';
-import { readConfig } from '@changesets/config';
 import { parseChangesetFile } from '@changesets/parse';
-import { readPreState } from '@changesets/pre';
-import { readChangesets } from '@changesets/read';
-import { getPackages } from '@manypkg/get-packages';
+import { projectReleasePlan } from './release-plan.ts';
 
 /** All failures retain the owner's exclusive authority over stabilization. */
 const policy =
@@ -114,26 +110,7 @@ async function checkVersions(root: string): Promise<void> {
       );
     }
   }
-  const packages = await getPackages(root);
-  // Resolve policy from the actual repository rather than substituting a synthetic default.
-  await readFile(join(packages.rootDir, '.changeset/config.json'), 'utf8');
-  const result = await readConfig(packages.rootDir, packages);
-  if (result.errors !== undefined) {
-    throw new Error(`Invalid Changesets config: ${result.errors.join('; ')}`);
-  }
-  for (const warning of result.warnings) {
-    console.warn(warning);
-  }
-  const [changesets, preState] = await Promise.all([
-    readChangesets(packages.rootDir),
-    readPreState(packages.rootDir),
-  ]);
-  const plan = assembleReleasePlan(
-    changesets,
-    packages,
-    result.config,
-    preState,
-  );
+  const plan = await projectReleasePlan(root);
   assertPlanVersions(plan.releases);
 }
 
