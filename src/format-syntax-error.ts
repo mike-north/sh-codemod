@@ -44,7 +44,11 @@ export class FormatSyntaxError extends Error {
    * @param source - The exact string that was parsed, used to translate that position.
    * @param filename - The project `filename` option, if the caller gave one.
    */
-  constructor(cause: ParseError | LangError, source: string, filename: string | undefined) {
+  constructor(
+    cause: ParseError | LangError,
+    source: string,
+    filename: string | undefined,
+  ) {
     super(cause.message, { cause });
     const position = locateByteOffset(source, cause.Pos.Offset);
     this.name = 'FormatSyntaxError';

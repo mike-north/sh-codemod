@@ -10,7 +10,7 @@
  * serialization exception. The rendering is diagnostic text, never stored state.
  * @internal
  */
-export function describeConfigurationValue(value: unknown): string {
+function describeConfigurationValue(value: unknown): string {
   // JSON turns nonfinite numbers into null, which would identify a different rejected value.
   if (typeof value === 'number' && !Number.isFinite(value)) {
     return String(value);
@@ -28,6 +28,10 @@ export function describeConfigurationValue(value: unknown): string {
 }
 
 /** The user's path identifies the binding; prose may evolve independently of the error code. @internal */
-export function configurationMessage(where: string, detail: string, value: unknown): string {
+export function configurationMessage(
+  where: string,
+  detail: string,
+  value: unknown,
+): string {
   return `${where}: ${detail}; received ${describeConfigurationValue(value)}.`;
 }

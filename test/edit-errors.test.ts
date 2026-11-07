@@ -11,6 +11,7 @@
  * @see ../README.md
  * @see https://github.com/mike-north/eslint-sh/issues/182
  */
+import assert from 'node:assert/strict';
 import { walk, type Node } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import {
@@ -61,8 +62,9 @@ describe('EditOverlapError', () => {
     editor.replaceNode(lastLit(editor), 'x');
     const error = thrown(() => editor.apply());
     expect(error).toBeInstanceOf(EditOverlapError);
-    expect((error as Error).name).toBe('EditOverlapError');
-    expect((error as Error).message).toBe(
+    assert.ok(error instanceof EditOverlapError);
+    expect(error.name).toBe('EditOverlapError');
+    expect(error.message).toBe(
       'Edits overlap: [0, 8) and [5, 8) both claim the same text',
     );
   });
@@ -76,8 +78,9 @@ describe('ForeignNodeError', () => {
       editor.replaceNode(foreign, 'y');
     });
     expect(error).toBeInstanceOf(ForeignNodeError);
-    expect((error as Error).name).toBe('ForeignNodeError');
-    expect((error as Error).message).toBe(
+    assert.ok(error instanceof ForeignNodeError);
+    expect(error.name).toBe('ForeignNodeError');
+    expect(error.message).toBe(
       "Cannot edit a CallExpr node that does not belong to this editor's parse",
     );
   });
@@ -95,16 +98,20 @@ describe('InvalidNodeError', () => {
     { value: true, described: 'boolean' },
   ];
 
-  it.each(cases)('names $described without printing the value', ({ value, described }) => {
-    const editor = createEditor('echo x\n');
-    const error = thrown(() => {
-      // @ts-expect-error deliberately violating the types, as a JavaScript caller can
-      editor.insertBefore(value, 'y');
-    });
-    expect(error).toBeInstanceOf(InvalidNodeError);
-    expect((error as Error).name).toBe('InvalidNodeError');
-    expect((error as Error).message).toBe(
-      `Expected a syntax node from this editor's \`ast\`, received ${described}`,
-    );
-  });
+  it.each(cases)(
+    'names $described without printing the value',
+    ({ value, described }) => {
+      const editor = createEditor('echo x\n');
+      const error = thrown(() => {
+        // @ts-expect-error deliberately violating the types, as a JavaScript caller can
+        editor.insertBefore(value, 'y');
+      });
+      expect(error).toBeInstanceOf(InvalidNodeError);
+      assert.ok(error instanceof InvalidNodeError);
+      expect(error.name).toBe('InvalidNodeError');
+      expect(error.message).toBe(
+        `Expected a syntax node from this editor's \`ast\`, received ${described}`,
+      );
+    },
+  );
 });

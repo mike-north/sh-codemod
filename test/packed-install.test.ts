@@ -13,8 +13,17 @@
  * @see https://nodejs.org/api/packages.html#conditional-exports — `import` and `require`
  * @see https://nodejs.org/api/modules.html#loading-ecmascript-modules-using-require — CJS loading ESM
  */
+import { record } from './assertions.js';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -23,7 +32,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /** Locate this package independently of the test runner's cwd. */
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-
 
 /**
  * Each consumer formats the same hand-checked input and reports the result, the error class a
@@ -112,26 +120,44 @@ const EXPECTED_REPORT = {
 function pnpmPack(destination: string): string {
   const stdout = execFileSync(
     'pnpm',
-    ['pack', '--json', '--pack-destination', destination, '--config.ignore-scripts=false'],
+    [
+      'pack',
+      '--json',
+      '--pack-destination',
+      destination,
+      '--config.ignore-scripts=false',
+    ],
     { cwd: packageDir, encoding: 'utf8' },
   );
   const jsonStart = stdout.indexOf('{');
   if (jsonStart === -1) {
     throw new Error(`pnpm pack --json produced no JSON object:\n${stdout}`);
   }
-  return (JSON.parse(stdout.slice(jsonStart)) as { filename: string }).filename;
+  const packed = record(JSON.parse(stdout.slice(jsonStart)));
+  if (typeof packed.filename !== 'string') {
+    throw new Error('Missing archive filename');
+  }
+  return packed.filename;
 }
 
 /** The workspace's own release-age exclusions, so the install applies the same policy. */
 function workspaceReleaseAgeExclusions(): string {
-  const workspace = readFileSync(join(packageDir, 'pnpm-workspace.yaml'), 'utf8');
-  return /^minimumReleaseAgeExclude:\n(?: {2}- .*\n)+/m.exec(workspace)?.[0] ?? '';
+  const workspace = readFileSync(
+    join(packageDir, 'pnpm-workspace.yaml'),
+    'utf8',
+  );
+  return (
+    /^minimumReleaseAgeExclude:\n(?: {2}- .*\n)+/m.exec(workspace)?.[0] ?? ''
+  );
 }
 
 /** Runs one consumer file with Node inside the installed project and parses its report. */
 function runConsumer(projectDir: string, file: string): unknown {
   return JSON.parse(
-    execFileSync(process.execPath, [file], { cwd: projectDir, encoding: 'utf8' }),
+    execFileSync(process.execPath, [file], {
+      cwd: projectDir,
+      encoding: 'utf8',
+    }),
   ) as unknown;
 }
 
@@ -156,12 +182,19 @@ function writeTypeProject(projectDir: string, file: string): string {
 }
 
 /** Type-checks one consumer file under `nodenext`, returning tsc's exit status and output. */
-function typeCheck(projectDir: string, file: string): { status: number | null; output: string } {
+function typeCheck(
+  projectDir: string,
+  file: string,
+): { status: number | null; output: string } {
   const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
-  const result = spawnSync(process.execPath, [tsc, '-p', writeTypeProject(projectDir, file)], {
-    cwd: projectDir,
-    encoding: 'utf8',
-  });
+  const result = spawnSync(
+    process.execPath,
+    [tsc, '-p', writeTypeProject(projectDir, file)],
+    {
+      cwd: projectDir,
+      encoding: 'utf8',
+    },
+  );
   return { status: result.status, output: result.stdout + result.stderr };
 }
 
@@ -178,7 +211,10 @@ describe('packed install (issue #180, criterion 7)', () => {
 
     // A release must rebuild from source even when dist contains obsolete output.
     mkdirSync(join(packageDir, 'dist'), { recursive: true });
-    writeFileSync(join(packageDir, 'dist', 'stale-namespace.js'), ['@eslint', 'sh/obsolete'].join('-'));
+    writeFileSync(
+      join(packageDir, 'dist', 'stale-namespace.js'),
+      ['@eslint', 'sh/obsolete'].join('-'),
+    );
     writeFileSync(join(packageDir, 'dist', 'stale.wasm'), 'obsolete runtime');
     const tarball = pnpmPack(packsDir);
     writeFileSync(
@@ -190,16 +226,28 @@ describe('packed install (issue #180, criterion 7)', () => {
         dependencies: { 'sh-codemod': `file:${tarball}`, 'sh-ast': '0.10.0' },
       }),
     );
-    writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceReleaseAgeExclusions());
+    writeFileSync(
+      join(projectDir, 'pnpm-workspace.yaml'),
+      workspaceReleaseAgeExclusions(),
+    );
     writeFileSync(join(projectDir, 'consumer.mjs'), ESM_CONSUMER);
     writeFileSync(join(projectDir, 'consumer.cjs'), CJS_CONSUMER);
     writeFileSync(join(projectDir, 'types-esm.mts'), ESM_TYPES);
     writeFileSync(join(projectDir, 'types-cjs.cts'), CJS_TYPES);
 
-    execFileSync('pnpm', ['install', '--no-frozen-lockfile'], {
-      cwd: projectDir,
-      encoding: 'utf8',
-    });
+    execFileSync(
+      'pnpm',
+      [
+        'install',
+        '--no-frozen-lockfile',
+        '--store-dir',
+        join(scratchDir, 'empty-store'),
+      ],
+      {
+        cwd: projectDir,
+        encoding: 'utf8',
+      },
+    );
   }, 240_000);
 
   afterAll(() => {
@@ -218,16 +266,28 @@ describe('packed install (issue #180, criterion 7)', () => {
 
   it('ships clean output without stale namespaces, runtime assets or source maps', () => {
     const packageRoot = join(projectDir, 'node_modules', 'sh-codemod');
-    const files = readdirSync(join(packageRoot, 'dist'), { recursive: true, encoding: 'utf8' });
+    const files = readdirSync(join(packageRoot, 'dist'), {
+      recursive: true,
+      encoding: 'utf8',
+    });
     expect(files.filter((file) => file.endsWith('.map'))).toEqual([]);
     expect(files).not.toContain('stale-namespace.js');
     expect(files).not.toContain('stale.wasm');
-    for (const file of readdirSync(packageRoot, { recursive: true, encoding: 'utf8' })) {
+    for (const file of readdirSync(packageRoot, {
+      recursive: true,
+      encoding: 'utf8',
+    })) {
       const path = join(packageRoot, file);
-      if (!statSync(path).isFile()) { continue; }
+      if (!statSync(path).isFile()) {
+        continue;
+      }
       expect(file).not.toMatch(/\.(?:wasm|go|map)$/u);
-      expect(readFileSync(path, 'utf8')).not.toContain(['@eslint', 'sh'].join('-'));
-      expect(readFileSync(path, 'utf8')).not.toContain(['ESLINT', 'SH'].join('_'));
+      expect(readFileSync(path, 'utf8')).not.toContain(
+        ['@eslint', 'sh'].join('-'),
+      );
+      expect(readFileSync(path, 'utf8')).not.toContain(
+        ['ESLINT', 'SH'].join('_'),
+      );
     }
     const entry = readFileSync(join(packageRoot, 'dist', 'index.js'), 'utf8');
     expect(entry).not.toContain('sourceMappingURL');
@@ -236,17 +296,22 @@ describe('packed install (issue #180, criterion 7)', () => {
   it('installs without an ESLint runtime dependency', () => {
     const installedRequire = createRequire(join(projectDir, 'consumer.cjs'));
     expect(() => installedRequire.resolve('eslint')).toThrow();
-    const manifest = JSON.parse(
-      readFileSync(installedRequire.resolve('sh-codemod/package.json'), 'utf8'),
-    ) as { dependencies: Record<string, string> };
-    expect(Object.keys(manifest.dependencies)).toEqual(['sh-ast']);
+    const manifest = record(
+      JSON.parse(
+        readFileSync(
+          installedRequire.resolve('sh-codemod/package.json'),
+          'utf8',
+        ),
+      ),
+    );
+    expect(Object.keys(record(manifest.dependencies))).toEqual(['sh-ast']);
   });
 
   it('exposes ./package.json through exports', () => {
     const resolved = createRequire(join(projectDir, 'consumer.cjs')).resolve(
       'sh-codemod/package.json',
     );
-    expect((JSON.parse(readFileSync(resolved, 'utf8')) as { name: string }).name).toBe(
+    expect(record(JSON.parse(readFileSync(resolved, 'utf8'))).name).toBe(
       'sh-codemod',
     );
   });

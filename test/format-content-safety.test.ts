@@ -36,7 +36,10 @@ describe('format content safety', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(FormatSyntaxError);
       expect(error).toHaveProperty('filename', '日本語.sh');
-      expect(error).toHaveProperty('message', expect.stringContaining('日本語.sh:'));
+      expect(error).toHaveProperty(
+        'message',
+        expect.stringContaining('日本語.sh:'),
+      );
     }
   });
 });

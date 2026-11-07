@@ -3,6 +3,8 @@
  * The workflow uses YAML's JSON subset so Node can inspect it without a YAML dependency.
  * @see https://yaml.org/spec/1.2.2/ — JSON compatibility
  */
+import assert from 'node:assert/strict';
+import { record } from './assertions.js';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,19 +24,50 @@ interface IStep {
 interface IWorkflow {
   readonly on: Readonly<Record<string, unknown>>;
   readonly permissions: Readonly<Record<string, unknown>>;
-  readonly jobs: Readonly<Record<string, {
-    readonly 'runs-on': string;
-    readonly if?: unknown;
-    readonly permissions?: unknown;
-    readonly 'continue-on-error'?: unknown;
-    readonly steps: readonly IStep[];
-  }>>;
+  readonly jobs: Readonly<
+    Record<
+      string,
+      {
+        readonly 'runs-on': string;
+        readonly if?: unknown;
+        readonly permissions?: unknown;
+        readonly 'continue-on-error'?: unknown;
+        readonly steps: readonly IStep[];
+      }
+    >
+  >;
+}
+
+/** Structural validation establishes the workflow shape before behavioral assertions use it. */
+function assertWorkflow(value: unknown): asserts value is IWorkflow {
+  const input = record(value);
+  record(input.on);
+  record(input.permissions);
+  for (const candidate of Object.values(record(input.jobs))) {
+    const job = record(candidate);
+    assert.equal(typeof job['runs-on'], 'string');
+    assert.ok(Array.isArray(job.steps));
+    for (const candidateStep of job.steps) {
+      const step = record(candidateStep);
+      for (const key of ['uses', 'run']) {
+        assert.ok(step[key] === undefined || typeof step[key] === 'string');
+      }
+      if (step.with !== undefined) {
+        record(step.with);
+      }
+    }
+  }
 }
 
 /** Read the actual checked-in workflow; absence and invalid configuration must fail the test. */
 function workflow(): IWorkflow {
-  const source = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  return JSON.parse(source.replace(/^#.*$/gmu, '')) as IWorkflow;
+  const source = readFileSync(
+    new URL('../.github/workflows/ci.yml', import.meta.url),
+    'utf8',
+  );
+  const value: unknown = JSON.parse(source.replace(/^#.*$/gmu, ''));
+  assertWorkflow(value);
+  return value;
 }
 
 /** Enforce events, authority and setup before any gate command can be executed. */
@@ -46,53 +79,117 @@ function gateCommands(config: IWorkflow): readonly string[] {
   expect(config.permissions).toEqual({ contents: 'read' });
   expect(Object.values(config.jobs)).toHaveLength(1);
   const job = Object.values(config.jobs)[0];
-  if (!job) { throw new Error('A hosted validation job is required'); }
+  if (!job) {
+    throw new Error('A hosted validation job is required');
+  }
   expect(job['runs-on']).toBe('ubuntu-latest');
   expect(job.if).toBeUndefined();
   expect(job.permissions).toBeUndefined();
   expect(job['continue-on-error']).toBeUndefined();
   for (const step of job.steps) {
-    expect(step.if).toBeUndefined();
+    expect(step.if).toBe(
+      step.run !== undefined &&
+        /pnpm (?:check:changesets|check:versions|test:ecosystem-map)$/u.test(
+          step.run,
+        )
+        ? '${{ !cancelled() }}'
+        : undefined,
+    );
     expect(step['continue-on-error']).toBeUndefined();
   }
   const actions = job.steps.filter((step) => step.uses !== undefined);
   expect(actions.map((step) => step.uses?.split('@')[0])).toEqual([
-    'actions/checkout', 'actions/setup-node', 'pnpm/action-setup',
+    'actions/checkout',
+    'actions/setup-node',
+    'pnpm/action-setup',
   ]);
   expect(actions[0]?.with?.['persist-credentials']).toBe(false);
-  expect(String(actions[1]?.with?.['node-version'])).toBe('24');
-  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { packageManager: string };
+  expect(String(actions[1]?.with?.['node-version'])).toBe('24.14.0');
+  const manifest = record(
+    JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ),
+  );
+  assert.equal(typeof manifest.packageManager, 'string');
+  if (typeof manifest.packageManager !== 'string') {
+    throw new Error('Missing native pnpm identity');
+  }
   expect(manifest.packageManager).toBe('pnpm@12.16.1');
   // Omitted version delegates to packageManager; an explicit override must match it exactly.
-  expect(actions[2]?.with?.version ?? manifest.packageManager.split('@')[1]).toBe('12.16.1');
+  expect(
+    actions[2]?.with?.version ?? manifest.packageManager.split('@')[1],
+  ).toBe('12.16.1');
   expect(actions[2]?.with?.run_install).toBe(false);
   expect(job.steps.slice(0, 3)).toEqual(actions);
-  const commands = job.steps.flatMap((step) => step.run === undefined ? [] : [step.run]);
-  expect(commands).toHaveLength(4);
+  const commands = job.steps.flatMap((step) =>
+    step.run === undefined ? [] : [step.run],
+  );
+  expect(commands).toEqual(
+    [
+      'install --frozen-lockfile',
+      'check:changesets',
+      'check:versions',
+      'test:ecosystem-map',
+      'build',
+      'check',
+      'test',
+    ].map((command) => `env -u NO_COLOR nice pnpm ${command}`),
+  );
   // Limit this job to local validation; no setup, trust, release or publication command belongs here.
   for (const command of commands) {
-    expect(command).toMatch(/^env -u NO_COLOR nice pnpm (?:install --frozen-lockfile|build|check|test)$/u);
+    expect(command).toMatch(
+      /^env -u NO_COLOR nice pnpm (?:install --frozen-lockfile|check:changesets|check:versions|test:ecosystem-map|build|check|test)$/u,
+    );
   }
   return commands;
 }
 
 /** Execute the workflow's shell commands with a recording pnpm, including real exit propagation. */
-function runGates(config: IWorkflow, failGate = ''): { readonly status: number | null; readonly calls: readonly string[] } {
-  const commands = gateCommands(config);
+function runGates(
+  config: IWorkflow,
+  failGate = '',
+): { readonly status: number | null; readonly calls: readonly string[] } {
+  gateCommands(config);
+  const steps = Object.values(config.jobs)
+    .flatMap((job) => job.steps)
+    .filter((step) => step.run !== undefined);
   const directory = mkdtempSync(join(tmpdir(), 'sh-codemod-ci-'));
   const log = join(directory, 'calls');
   try {
     writeFileSync(log, '');
-    writeFileSync(join(directory, 'pnpm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CI_GATE_LOG"\nif [ "$1" = "$CI_FAIL_GATE" ]; then exit 37; fi\n', { mode: 0o755 });
+    writeFileSync(
+      join(directory, 'pnpm'),
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CI_GATE_LOG"\nif [ "$1" = "$CI_FAIL_GATE" ]; then exit 37; fi\n',
+      { mode: 0o755 },
+    );
     let status: number | null = 0;
-    for (const command of commands) {
-      const result = spawnSync('/bin/bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command], {
-        encoding: 'utf8',
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}`, CI_GATE_LOG: log, CI_FAIL_GATE: failGate },
-      });
-      if (result.error) { throw result.error; }
-      status = result.status;
-      if (status !== 0) { break; }
+    for (const step of steps) {
+      if (status !== 0 && step.if !== '${{ !cancelled() }}') {
+        continue;
+      }
+      const command = step.run;
+      if (command === undefined) {
+        throw new Error('Missing shell command');
+      }
+      const result = spawnSync(
+        '/bin/bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH ?? ''}`,
+            CI_GATE_LOG: log,
+            CI_FAIL_GATE: failGate,
+          },
+        },
+      );
+      if (result.error) {
+        throw result.error;
+      }
+      if (status === 0) {
+        status = result.status;
+      }
     }
     return { status, calls: readFileSync(log, 'utf8').trim().split('\n') };
   } finally {
@@ -102,23 +199,85 @@ function runGates(config: IWorkflow, failGate = ''): { readonly status: number |
 
 describe('standalone CI delivery', () => {
   it('runs frozen install, build, check and test on every push and PR', () => {
-    expect(runGates(workflow())).toEqual({ status: 0, calls: ['install --frozen-lockfile', 'build', 'check', 'test'] });
+    expect(runGates(workflow())).toEqual({
+      status: 0,
+      calls: [
+        'install --frozen-lockfile',
+        'check:changesets',
+        'check:versions',
+        'test:ecosystem-map',
+        'build',
+        'check',
+        'test',
+      ],
+    });
   });
 
-  it.each(['install', 'build', 'check', 'test'])('refuses success after a failing %s gate', (gate) => {
+  it.each([
+    'install',
+    'check:changesets',
+    'check:versions',
+    'test:ecosystem-map',
+    'build',
+    'check',
+    'test',
+  ])('refuses success after a failing %s gate', (gate) => {
     const result = runGates(workflow(), gate);
     expect(result.status).toBe(37);
-    expect(result.calls).toEqual(['install --frozen-lockfile', 'build', 'check', 'test'].slice(0, ['install', 'build', 'check', 'test'].indexOf(gate) + 1));
+    const policy = ['check:changesets', 'check:versions', 'test:ecosystem-map'];
+    const ordinary = ['build', 'check', 'test'];
+    const prefix = ['install --frozen-lockfile', ...policy];
+    expect(result.calls).toEqual(
+      gate === 'install' || policy.includes(gate)
+        ? prefix
+        : [...prefix, ...ordinary.slice(0, ordinary.indexOf(gate) + 1)],
+    );
   });
 
   it('rejects filtered triggers and missing or bypassed gates', () => {
     const original = workflow();
     expect(() => gateCommands({ ...original, on: { push: null } })).toThrow();
-    expect(() => gateCommands({ ...original, on: { ...original.on, push: { branches: ['main'] } } })).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        on: { ...original.on, push: { branches: ['main'] } },
+      }),
+    ).toThrow();
     const job = Object.values(original.jobs)[0];
-    if (!job) { throw new Error('The real validation job is required'); }
-    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, steps: job.steps.filter((step) => !step.run?.endsWith('pnpm check')) } } })).toThrow();
-    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, if: 'false' } } })).toThrow();
-    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, steps: job.steps.map((step) => step.run ? { ...step, 'continue-on-error': true } : step) } } })).toThrow();
+    if (!job) {
+      throw new Error('The real validation job is required');
+    }
+    expect(() =>
+      gateCommands({
+        ...original,
+        jobs: {
+          validation: {
+            ...job,
+            steps: job.steps.filter(
+              (step) => !step.run?.endsWith('pnpm check'),
+            ),
+          },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        jobs: { validation: { ...job, if: 'false' } },
+      }),
+    ).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        jobs: {
+          validation: {
+            ...job,
+            steps: job.steps.map((step) =>
+              step.run ? { ...step, 'continue-on-error': true } : step,
+            ),
+          },
+        },
+      }),
+    ).toThrow();
   });
 });

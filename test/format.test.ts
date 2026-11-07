@@ -13,13 +13,17 @@
  * (tab indentation, single spaces between words, one blank line kept at most); none is captured
  * from a previous run.
  */
-import { LangBash, LangPOSIX } from 'sh-ast';
+import assert from 'node:assert/strict';
+import { LangPOSIX } from 'sh-ast';
 import { PrintError } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import { format, FormatSyntaxError, type FormatOptions } from '../src/index.js';
 
 /** Runs `format` and returns the error it throws, failing the test if it returns text. */
-function formatError(text: string, options?: Parameters<typeof format>[1]): unknown {
+function formatError(
+  text: string,
+  options?: Parameters<typeof format>[1],
+): unknown {
   try {
     format(text, options);
   } catch (error) {
@@ -30,7 +34,9 @@ function formatError(text: string, options?: Parameters<typeof format>[1]): unkn
 
 describe('canonical output', () => {
   it('collapses spacing and re-indents with tabs', () => {
-    expect(format('if true;then\n    echo   hi\nfi\n')).toBe('if true; then\n\techo hi\nfi\n');
+    expect(format('if true;then\n    echo   hi\nfi\n')).toBe(
+      'if true; then\n\techo hi\nfi\n',
+    );
   });
 
   it('keeps one blank line from a run of several, and adds the final newline', () => {
@@ -38,7 +44,9 @@ describe('canonical output', () => {
   });
 
   it('keeps comments, normalizing the space before a trailing comment', () => {
-    expect(format('# top\necho   hi    # trailing\n')).toBe('# top\necho hi # trailing\n');
+    expect(format('# top\necho   hi    # trailing\n')).toBe(
+      '# top\necho hi # trailing\n',
+    );
   });
 
   it('formats functions and case clauses', () => {
@@ -56,18 +64,26 @@ describe('options', () => {
   const script = 'f(){\necho hi\n}\ncase $x in\na) echo a;;\nesac\n';
 
   it('applies Indent, SwitchCaseIndent and FunctionNextLine', () => {
-    expect(format(script, { Indent: 2, SwitchCaseIndent: true, FunctionNextLine: true })).toBe(
-      'f()\n{\n  echo hi\n}\ncase $x in\n  a) echo a ;;\nesac\n',
-    );
+    expect(
+      format(script, {
+        Indent: 2,
+        SwitchCaseIndent: true,
+        FunctionNextLine: true,
+      }),
+    ).toBe('f()\n{\n  echo hi\n}\ncase $x in\n  a) echo a ;;\nesac\n');
   });
 
   it('applies BinaryNextLine to a pipeline that spans lines', () => {
-    expect(format('a   |\n   b\n', { BinaryNextLine: true })).toBe('a \\\n\t| b\n');
+    expect(format('a   |\n   b\n', { BinaryNextLine: true })).toBe(
+      'a \\\n\t| b\n',
+    );
     expect(format('a   |\n   b\n')).toBe('a |\n\tb\n');
   });
 
   it('applies SpaceRedirects', () => {
-    expect(format('echo hi >out\n', { SpaceRedirects: true })).toBe('echo hi > out\n');
+    expect(format('echo hi >out\n', { SpaceRedirects: true })).toBe(
+      'echo hi > out\n',
+    );
     expect(format('echo hi > out\n')).toBe('echo hi >out\n');
   });
 
@@ -82,7 +98,9 @@ describe('options', () => {
   });
 
   it('lets a PrintError for incompatible printer options propagate unchanged', () => {
-    expect(formatError('echo hi', { Minify: true, SingleLine: true })).toBeInstanceOf(PrintError);
+    expect(
+      formatError('echo hi', { Minify: true, SingleLine: true }),
+    ).toBeInstanceOf(PrintError);
   });
 });
 
@@ -91,7 +109,8 @@ describe('idempotence', () => {
   const fixtures: readonly { name: string; input: string; output: string }[] = [
     {
       name: 'here-document with a quoted delimiter keeps its body verbatim',
-      input: "cat   <<'EOF'\n  keep   $HOME   spacing\n\ttab\nEOF\necho   done\n",
+      input:
+        "cat   <<'EOF'\n  keep   $HOME   spacing\n\ttab\nEOF\necho   done\n",
       output: "cat <<'EOF'\n  keep   $HOME   spacing\n\ttab\nEOF\necho done\n",
     },
     {
@@ -106,8 +125,10 @@ describe('idempotence', () => {
     },
     {
       name: 'comments: leading, trailing, and between commands',
-      input: '#!/usr/bin/env bash\n# header\n\necho   a   # one\n\n# between\necho b\n',
-      output: '#!/usr/bin/env bash\n# header\n\necho a # one\n\n# between\necho b\n',
+      input:
+        '#!/usr/bin/env bash\n# header\n\necho   a   # one\n\n# between\necho b\n',
+      output:
+        '#!/usr/bin/env bash\n# header\n\necho a # one\n\n# between\necho b\n',
     },
     {
       name: 'multibyte text: CJK, emoji and a combining mark, in code and in comments',
@@ -138,7 +159,11 @@ describe('idempotence', () => {
   });
 
   it('is idempotent under non-default options too', () => {
-    const options = { Indent: 4, SwitchCaseIndent: true, BinaryNextLine: true } as const;
+    const options = {
+      Indent: 4,
+      SwitchCaseIndent: true,
+      BinaryNextLine: true,
+    } as const;
     const once = format('case $x in\na) a   |\n b ;;\nesac\n', options);
     expect(once).toBe('case $x in\n    a) a \\\n        | b ;;\nesac\n');
     expect(format(once, options)).toBe(once);
@@ -179,20 +204,26 @@ describe('idempotence across printer options', () => {
     { Minify: true, SpaceRedirects: true, BinaryNextLine: true },
   ];
 
-  it.each(optionSets)('format(format(x, %o), %o) equals format(x, %o)', (options) => {
-    for (const source of sources) {
-      const once = format(source, options);
-      expect(format(once, options)).toBe(once);
-    }
-  });
+  it.each(optionSets)(
+    'format(format(x, %o), %o) equals format(x, %o)',
+    (options) => {
+      for (const source of sources) {
+        const once = format(source, options);
+        expect(format(once, options)).toBe(once);
+      }
+    },
+  );
 
   it('is not idempotent with KeepPadding, which upstream documents as flawed', () => {
     // mvdan/sh's printer keeps `echo x   # d` at two spaces on the first pass and at one on the
     // second. This records the upstream behavior; `format` does not work around it.
-    const source = '# top\n\nfoo   # trailing\n\n\n# mid\nbar()   {   # c\n  echo x   # d\n}\n';
+    const source =
+      '# top\n\nfoo   # trailing\n\n\n# mid\nbar()   {   # c\n  echo x   # d\n}\n';
     const options = { KeepPadding: true } as const;
     const once = format(source, options);
-    expect(once).toBe('# top\n\nfoo   # trailing\n\n# mid\nbar()   {   # c\n\techo x  # d\n}\n');
+    expect(once).toBe(
+      '# top\n\nfoo   # trailing\n\n# mid\nbar()   {   # c\n\techo x  # d\n}\n',
+    );
     expect(format(once, options)).toBe(
       '# top\n\nfoo   # trailing\n\n# mid\nbar()   {   # c\n\techo x # d\n}\n',
     );
@@ -202,7 +233,9 @@ describe('idempotence across printer options', () => {
     const options = { KeepPadding: true } as const;
     const once = format('case $x in\n *) echo b\n;;\nesac\n', options);
     expect(once).toBe('case $x in\n*)\n\techo  b\n\t;;\nesac\n');
-    expect(format(once, options)).toBe('case $x in\n*)\n\techo b\n\t;;\nesac\n');
+    expect(format(once, options)).toBe(
+      'case $x in\n*)\n\techo b\n\t;;\nesac\n',
+    );
   });
 
   it('prints SingleLine text that is not valid shell when a case is followed by a statement', () => {
@@ -221,16 +254,20 @@ describe('syntax errors', () => {
   it('throws FormatSyntaxError, with code, cause and filename, instead of returning text', () => {
     const error = formatError('echo (', { filename: 'build.sh' });
     expect(error).toBeInstanceOf(FormatSyntaxError);
-    const syntaxError = error as FormatSyntaxError;
+    assert.ok(error instanceof FormatSyntaxError);
+    const syntaxError = error;
     expect(syntaxError.code).toBe('SH_CODEMOD_FORMAT_SYNTAX');
     expect(syntaxError.name).toBe('FormatSyntaxError');
     expect(syntaxError.filename).toBe('build.sh');
-    expect(syntaxError.message).toBe('build.sh:1:1: `foo(` must be followed by `)`');
+    expect(syntaxError.message).toBe(
+      'build.sh:1:1: `foo(` must be followed by `)`',
+    );
     expect(syntaxError.cause.code).toBe('SH_AST_SYNTAX_PARSE');
   });
 
   it('reports line and column of an unterminated quote on a later line', () => {
-    const error = formatError('echo ok\necho "never closed\n') as FormatSyntaxError;
+    const error = formatError('echo ok\necho "never closed\n');
+    assert.ok(error instanceof FormatSyntaxError);
     expect(error.line).toBe(2);
     expect(error.column).toBe(6);
     expect(error.offset).toBe(13);
@@ -240,7 +277,8 @@ describe('syntax errors', () => {
 
   it('reports UTF-16 positions, not byte positions, after multibyte text', () => {
     // `echo ` (5) + 日本語 (3) + space + 😀 (2 UTF-16 units) + space = 12 code units before the quote.
-    const error = formatError('echo 日本語 😀 "unterminated') as FormatSyntaxError;
+    const error = formatError('echo 日本語 😀 "unterminated');
+    assert.ok(error instanceof FormatSyntaxError);
     expect(error.offset).toBe(12);
     expect(error.column).toBe(13);
     expect(error.line).toBe(1);
@@ -249,14 +287,16 @@ describe('syntax errors', () => {
   });
 
   it('counts a CRLF pair as one line break', () => {
-    const error = formatError('echo a\r\necho "b\r\n') as FormatSyntaxError;
+    const error = formatError('echo a\r\necho "b\r\n');
+    assert.ok(error instanceof FormatSyntaxError);
     expect(error.line).toBe(2);
     expect(error.column).toBe(6);
     expect(error.offset).toBe(13);
   });
 
   it('reports a dialect rejection with its position', () => {
-    const error = formatError('echo ${x@Q}', { dialect: LangPOSIX }) as FormatSyntaxError;
+    const error = formatError('echo ${x@Q}', { dialect: LangPOSIX });
+    assert.ok(error instanceof FormatSyntaxError);
     expect(error).toBeInstanceOf(FormatSyntaxError);
     expect(error.cause.code).toBe('SH_AST_SYNTAX_LANG');
     expect(error.line).toBe(1);

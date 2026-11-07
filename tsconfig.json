@@ -1,9 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022"
-    ],
+    "lib": ["ES2022"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
@@ -24,13 +22,12 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist",
-    "types": [
-      "node"
-    ]
+    "types": ["node"],
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src", "test", "scripts", "eslint.config.ts", "vitest.config.ts"]
 }
