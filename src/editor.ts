@@ -87,7 +87,14 @@ function buildByteToUtf16(text: string): Int32Array {
   while (index < text.length) {
     table[byte] = index;
     const codePoint = text.codePointAt(index) ?? 0;
-    byte += codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+    byte +=
+      codePoint < 0x80
+        ? 1
+        : codePoint < 0x800
+          ? 2
+          : codePoint < 0x10000
+            ? 3
+            : 4;
     index += codePoint >= 0x10000 ? 2 : 1;
   }
   table[byte] = index;
@@ -102,8 +109,14 @@ function buildByteToUtf16(text: string): Int32Array {
  * that range would delete the line ending's `\r`. A node never legitimately ends between the
  * `\r` and `\n` of one line ending, so the `\r` is always safe to leave out.
  */
-function trimLineTerminatorCarriageReturn(text: string, start: number, end: number): number {
-  return end > start && text[end - 1] === '\r' && text[end] === '\n' ? end - 1 : end;
+function trimLineTerminatorCarriageReturn(
+  text: string,
+  start: number,
+  end: number,
+): number {
+  return end > start && text[end - 1] === '\r' && text[end] === '\n'
+    ? end - 1
+    : end;
 }
 
 /** Whether `value` has the shape of a syntax record: a non-array object with a string `Type`. */
@@ -162,7 +175,8 @@ function findHeredocBodyEnds(
     const body = redirect.Hdoc;
     const bounds = body && parsed.Positions.get(body);
     const delimiter = redirect.Word && delimiterText(redirect.Word);
-    if (!body || !bounds || delimiter === undefined || delimiter === null) return true;
+    if (!body || !bounds || delimiter === undefined || delimiter === null)
+      return true;
     const start = byteToUtf16.at(bounds.Pos.Offset) ?? -1;
     const reportedEnd = byteToUtf16.at(bounds.End.Offset) ?? -1;
     if (start < 0 || reportedEnd < 0) return true;
@@ -173,7 +187,10 @@ function findHeredocBodyEnds(
     while (text[delimiterStart] === '\t') delimiterStart += 1;
     if (text.slice(delimiterStart, end) !== delimiter) return true;
     walk(body, (inner) => {
-      if (inner && parsed.Positions.get(inner)?.End.Offset === bounds.End.Offset) {
+      if (
+        inner &&
+        parsed.Positions.get(inner)?.End.Offset === bounds.End.Offset
+      ) {
         ends.set(inner, delimiterStart);
       }
       return true;
@@ -210,12 +227,16 @@ function findAttachedComments(
     const start = byteToUtf16.at(nodePos(comment).Offset) ?? -1;
     const end = byteToUtf16.at(nodeEnd(comment).Offset) ?? -1;
     if (start >= 0 && end >= 0) {
-      found.set(comment.Hash.Offset, { range: [start, end], text: goText(comment.Text) });
+      found.set(comment.Hash.Offset, {
+        range: [start, end],
+        text: goText(comment.Text),
+      });
     }
   }
   walk(parsed.File, (node) => {
     if (node?.Type === 'Comment') record(node);
-    if (node?.Type === 'Stmt') for (const comment of node.Comments ?? []) record(comment);
+    if (node?.Type === 'Stmt')
+      for (const comment of node.Comments ?? []) record(comment);
     return true;
   });
   return found;
@@ -228,7 +249,11 @@ function plain(edit: QueuedEdit): TextEdit {
 
 /** Orders edits by position; at one position, empty ranges precede non-empty, then queue order. */
 function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
-  return a.range[0] - b.range[0] || a.range[1] - b.range[1] || a.sequence - b.sequence;
+  return (
+    a.range[0] - b.range[0] ||
+    a.range[1] - b.range[1] ||
+    a.sequence - b.sequence
+  );
 }
 
 /**
@@ -261,7 +286,10 @@ function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
  * @public
  */
 function createEditor(text: string, options: EditorOptions = {}): Editor {
-  const parsed = parseWithPositionsSync(text, serviceParseOptions('createEditor', options));
+  const parsed = parseWithPositionsSync(
+    text,
+    serviceParseOptions('createEditor', options),
+  );
   const byteToUtf16 = buildByteToUtf16(text);
   const heredocBodyEnds = findHeredocBodyEnds(parsed, text, byteToUtf16);
   const attachedComments = findAttachedComments(parsed, byteToUtf16);
@@ -283,12 +311,17 @@ function createEditor(text: string, options: EditorOptions = {}): Editor {
     if (start < 0 || end < 0) {
       // SH_CODEMOD_EDIT_RANGE refuses a parser extent that cannot name a text boundary.
       throw Object.assign(
-        new RangeError(`${node.Type} bounds do not fall on character boundaries of the text`),
+        new RangeError(
+          `${node.Type} bounds do not fall on character boundaries of the text`,
+        ),
         { code: 'SH_CODEMOD_EDIT_RANGE' },
       );
     }
     const bodyEnd = heredocBodyEnds.get(node);
-    return [start, bodyEnd ?? trimLineTerminatorCarriageReturn(text, start, end)];
+    return [
+      start,
+      bodyEnd ?? trimLineTerminatorCarriageReturn(text, start, end),
+    ];
   }
 
   /** Queues one edit, stamping it so ties at one position resolve in queue order. */

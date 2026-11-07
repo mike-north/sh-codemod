@@ -26,14 +26,22 @@ function failure(run: () => unknown): Error {
 
 it('wraps actual parser syntax failures with their original cause and Unicode coordinates', async () => {
   const upstream = await vi.importActual<typeof import('sh-ast')>('sh-ast');
-  const original = failure(() => upstream.parseSync('echo 漢字\nif\n', { Filename: '漢字.sh' }));
+  const original = failure(() =>
+    upstream.parseSync('echo 漢字\nif\n', { Filename: '漢字.sh' }),
+  );
   vi.mocked(parseSync).mockImplementationOnce(() => {
     throw original;
   });
-  const error = failure(() => format('echo 漢字\nif\n', { filename: '漢字.sh' }));
+  const error = failure(() =>
+    format('echo 漢字\nif\n', { filename: '漢字.sh' }),
+  );
   expect(error).toBeInstanceOf(FormatSyntaxError);
   expect(error.cause).toBe(original);
-  expect(error).toMatchObject({ code: 'SH_CODEMOD_FORMAT_SYNTAX', filename: '漢字.sh', line: 2 });
+  expect(error).toMatchObject({
+    code: 'SH_CODEMOD_FORMAT_SYNTAX',
+    filename: '漢字.sh',
+    line: 2,
+  });
 });
 
 it('passes actual parser syntax failures through createEditor unchanged', async () => {
@@ -59,7 +67,9 @@ it('passes malformed-Unicode input failures through format unchanged', async () 
 it('passes actual incompatible-printer-option failures through format unchanged', async () => {
   const upstream = await vi.importActual<typeof import('sh-ast')>('sh-ast');
   const ast = upstream.parseSync('echo hi\n');
-  const original = failure(() => upstream.printSync(ast, { Minify: true, SingleLine: true }));
+  const original = failure(() =>
+    upstream.printSync(ast, { Minify: true, SingleLine: true }),
+  );
   vi.mocked(printSync).mockImplementationOnce(() => {
     throw original;
   });

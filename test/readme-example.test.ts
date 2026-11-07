@@ -13,14 +13,19 @@ import * as shAst from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import * as astServices from '../src/index.js';
 
-const readme = readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8');
+const readme = readFileSync(
+  fileURLToPath(new URL('../README.md', import.meta.url)),
+  'utf8',
+);
 
 /** Extracts the README's codemod example source. */
 function readmeExample(): string {
   const marker = readme.indexOf('<!-- codemod-example -->');
-  if (marker < 0) throw new Error('README has no <!-- codemod-example --> marker');
+  if (marker < 0)
+    throw new Error('README has no <!-- codemod-example --> marker');
   const match = /```js\r?\n([\s\S]*?)\r?\n```/.exec(readme.slice(marker));
-  if (!match?.[1]) throw new Error('README has no js block after the codemod-example marker');
+  if (!match?.[1])
+    throw new Error('README has no js block after the codemod-example marker');
   return match[1].replaceAll('\r\n', '\n');
 }
 
@@ -34,10 +39,14 @@ function run(source: string): unknown {
     'sh-ast': shAst,
   };
   const body = source
-    .replace(/^import \{([^}]*)\} from '([^']+)';$/gm, (_all, names: string, from: string) => {
-      if (!(from in modules)) throw new Error(`example imports unexpected module ${from}`);
-      return `const {${names}} = modules[${JSON.stringify(from)}];`;
-    })
+    .replace(
+      /^import \{([^}]*)\} from '([^']+)';$/gm,
+      (_all, names: string, from: string) => {
+        if (!(from in modules))
+          throw new Error(`example imports unexpected module ${from}`);
+        return `const {${names}} = modules[${JSON.stringify(from)}];`;
+      },
+    )
     .replace(/^export const result =/m, 'const result =');
   return runInNewContext(
     `(() => {

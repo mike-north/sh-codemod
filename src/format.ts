@@ -1,5 +1,11 @@
 /** Whole-file formatting refuses known parser/printer data loss instead of returning changed code. */
-import { LangError, ParseError, parseSync, printSync, type PrintOptions } from 'sh-ast';
+import {
+  LangError,
+  ParseError,
+  parseSync,
+  printSync,
+  type PrintOptions,
+} from 'sh-ast';
 import { serviceParseOptions } from './service-options.js';
 import type { LangVariant } from 'sh-ast';
 import { FormatSyntaxError } from './format-syntax-error.js';
@@ -32,13 +38,17 @@ function isSyntaxFailure(error: unknown): error is ParseError | LangError {
  * Refuses literal VT/FF anywhere in source: the printer treats them as layout even inside quotes.
  * A conservative file refusal avoids duplicating shell lexing to decide where each byte is data.
  */
-function refusePrinterControlCharacters(text: string, filename: string | undefined): void {
+function refusePrinterControlCharacters(
+  text: string,
+  filename: string | undefined,
+): void {
   const index = text.search(/[\v\f]/u);
   if (index === -1) return;
   const before = text.slice(0, index);
   const encoder = new TextEncoder();
   const line = before.split('\n').length;
-  const col = encoder.encode(before.slice(before.lastIndexOf('\n') + 1)).length + 1;
+  const col =
+    encoder.encode(before.slice(before.lastIndexOf('\n') + 1)).length + 1;
   const reason =
     'literal vertical tabs and form feeds are not supported: the printer changes their value';
   const prefix = filename ? `${filename}:` : '';
@@ -97,5 +107,7 @@ export function format(text: string, options: FormatOptions = {}): string {
     }
     throw error;
   }
-  return typeof printed === 'string' ? printed : new TextDecoder().decode(printed);
+  return typeof printed === 'string'
+    ? printed
+    : new TextDecoder().decode(printed);
 }

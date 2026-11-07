@@ -7,3 +7,4 @@ temp/
 .pnpm-store/
 *.tsbuildinfo
 *.tgz
+.tmp/
