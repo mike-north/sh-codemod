@@ -1,0 +1,124 @@
+/**
+ * Every push and PR must run the standalone gates with read-only authority.
+ * The workflow uses YAML's JSON subset so Node can inspect it without a YAML dependency.
+ * @see https://yaml.org/spec/1.2.2/ — JSON compatibility
+ */
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/** Only execution-relevant workflow fields participate in the delivery contract. */
+interface IStep {
+  readonly uses?: string;
+  readonly with?: Readonly<Record<string, unknown>>;
+  readonly run?: string;
+  readonly if?: unknown;
+  readonly 'continue-on-error'?: unknown;
+}
+
+/** The single validation job has no conditional or elevated permission boundary. */
+interface IWorkflow {
+  readonly on: Readonly<Record<string, unknown>>;
+  readonly permissions: Readonly<Record<string, unknown>>;
+  readonly jobs: Readonly<Record<string, {
+    readonly 'runs-on': string;
+    readonly if?: unknown;
+    readonly permissions?: unknown;
+    readonly 'continue-on-error'?: unknown;
+    readonly steps: readonly IStep[];
+  }>>;
+}
+
+/** Read the actual checked-in workflow; absence and invalid configuration must fail the test. */
+function workflow(): IWorkflow {
+  const source = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  return JSON.parse(source.replace(/^#.*$/gmu, '')) as IWorkflow;
+}
+
+/** Enforce events, authority and setup before any gate command can be executed. */
+function gateCommands(config: IWorkflow): readonly string[] {
+  expect(Object.keys(config.on).sort()).toEqual(['pull_request', 'push']);
+  for (const event of Object.values(config.on)) {
+    expect([null, {}]).toContainEqual(event);
+  }
+  expect(config.permissions).toEqual({ contents: 'read' });
+  expect(Object.values(config.jobs)).toHaveLength(1);
+  const job = Object.values(config.jobs)[0];
+  if (!job) { throw new Error('A hosted validation job is required'); }
+  expect(job['runs-on']).toBe('ubuntu-latest');
+  expect(job.if).toBeUndefined();
+  expect(job.permissions).toBeUndefined();
+  expect(job['continue-on-error']).toBeUndefined();
+  for (const step of job.steps) {
+    expect(step.if).toBeUndefined();
+    expect(step['continue-on-error']).toBeUndefined();
+  }
+  const actions = job.steps.filter((step) => step.uses !== undefined);
+  expect(actions.map((step) => step.uses?.split('@')[0])).toEqual([
+    'actions/checkout', 'actions/setup-node', 'pnpm/action-setup',
+  ]);
+  expect(actions[0]?.with?.['persist-credentials']).toBe(false);
+  expect(String(actions[1]?.with?.['node-version'])).toBe('24');
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { packageManager: string };
+  expect(manifest.packageManager).toBe('pnpm@12.16.1');
+  // Omitted version delegates to packageManager; an explicit override must match it exactly.
+  expect(actions[2]?.with?.version ?? manifest.packageManager.split('@')[1]).toBe('12.16.1');
+  expect(actions[2]?.with?.run_install).toBe(false);
+  expect(job.steps.slice(0, 3)).toEqual(actions);
+  const commands = job.steps.flatMap((step) => step.run === undefined ? [] : [step.run]);
+  expect(commands).toHaveLength(4);
+  // Limit this job to local validation; no setup, trust, release or publication command belongs here.
+  for (const command of commands) {
+    expect(command).toMatch(/^env -u NO_COLOR nice pnpm (?:install --frozen-lockfile|build|check|test)$/u);
+  }
+  return commands;
+}
+
+/** Execute the workflow's shell commands with a recording pnpm, including real exit propagation. */
+function runGates(config: IWorkflow, failGate = ''): { readonly status: number | null; readonly calls: readonly string[] } {
+  const commands = gateCommands(config);
+  const directory = mkdtempSync(join(tmpdir(), 'sh-codemod-ci-'));
+  const log = join(directory, 'calls');
+  try {
+    writeFileSync(log, '');
+    writeFileSync(join(directory, 'pnpm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CI_GATE_LOG"\nif [ "$1" = "$CI_FAIL_GATE" ]; then exit 37; fi\n', { mode: 0o755 });
+    let status: number | null = 0;
+    for (const command of commands) {
+      const result = spawnSync('/bin/bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}`, CI_GATE_LOG: log, CI_FAIL_GATE: failGate },
+      });
+      if (result.error) { throw result.error; }
+      status = result.status;
+      if (status !== 0) { break; }
+    }
+    return { status, calls: readFileSync(log, 'utf8').trim().split('\n') };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+describe('standalone CI delivery', () => {
+  it('runs frozen install, build, check and test on every push and PR', () => {
+    expect(runGates(workflow())).toEqual({ status: 0, calls: ['install --frozen-lockfile', 'build', 'check', 'test'] });
+  });
+
+  it.each(['install', 'build', 'check', 'test'])('refuses success after a failing %s gate', (gate) => {
+    const result = runGates(workflow(), gate);
+    expect(result.status).toBe(37);
+    expect(result.calls).toEqual(['install --frozen-lockfile', 'build', 'check', 'test'].slice(0, ['install', 'build', 'check', 'test'].indexOf(gate) + 1));
+  });
+
+  it('rejects filtered triggers and missing or bypassed gates', () => {
+    const original = workflow();
+    expect(() => gateCommands({ ...original, on: { push: null } })).toThrow();
+    expect(() => gateCommands({ ...original, on: { ...original.on, push: { branches: ['main'] } } })).toThrow();
+    const job = Object.values(original.jobs)[0];
+    if (!job) { throw new Error('The real validation job is required'); }
+    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, steps: job.steps.filter((step) => !step.run?.endsWith('pnpm check')) } } })).toThrow();
+    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, if: 'false' } } })).toThrow();
+    expect(() => gateCommands({ ...original, jobs: { validation: { ...job, steps: job.steps.map((step) => step.run ? { ...step, 'continue-on-error': true } : step) } } })).toThrow();
+  });
+});
