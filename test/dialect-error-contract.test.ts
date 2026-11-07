@@ -24,7 +24,7 @@ describe('project dialect and filename options', () => {
     [LangBats, '@test "hello" { true; }\n'],
     [LangZsh, 'function one two { true; }\n'],
   ] as const)('accepts %s in both services', (dialect, text) => {
-    // The cast permits tests to run red before the accepted option type exists.
+    // These fixtures verify producer dialect behavior at both service boundaries.
     const options = { dialect } as unknown as FormatOptions;
     expect(format(text, options)).toContain(
       dialect === LangBats
