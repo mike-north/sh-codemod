@@ -439,6 +439,28 @@ await test('supported legacy field subsets and a real CLI exit version preserve 
       await legacyChanges(value.root);
       const before = await inventory(join(value.root, '.changeset'));
       await cp(value.root, value.oracle, { recursive: true });
+      // The CLI reads changesets and state concurrently; finish supported migration on this
+      // disposable oracle first so consumed file paths stay stable during real versioning.
+      await readPreState(value.oracle);
+      const migratedState: unknown = JSON.parse(
+        await readFile(join(value.oracle, '.changeset/pre.json'), 'utf8'),
+      );
+      assert.deepEqual(migratedState, { mode: 'exit', tag: 'next' });
+      assert.deepEqual(await readdir(join(value.oracle, '.changeset/pre')), [
+        'old-change.md',
+      ]);
+      assert.equal(
+        await readFile(
+          join(value.oracle, '.changeset/pre/old-change.md'),
+          'utf8',
+        ),
+        await readFile(join(value.root, '.changeset/old-change.md'), 'utf8'),
+      );
+      await assert.rejects(
+        readFile(join(value.oracle, '.changeset/old-change.md')),
+        { code: 'ENOENT' },
+      );
+      assert.deepEqual(await inventory(join(value.root, '.changeset')), before);
       const cli = spawnSync(
         process.execPath,
         [
