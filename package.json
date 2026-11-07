@@ -1,0 +1,52 @@
+{
+  "name": "sh-codemod",
+  "version": "0.1.1",
+  "description": "Whole-file shell formatting and source-preserving AST edits through sh-ast",
+  "type": "module",
+  "author": "Mike North <michael.l.north@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "dependencies": {
+    "sh-ast": "0.10.0"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "7.59.0",
+    "@types/node": "24.10.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/sh-codemod.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/sh-codemod.d.cts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/sh-codemod.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mike-north/sh-codemod.git"
+  },
+  "scripts": {
+    "build": "node scripts/build.mts",
+    "check": "pnpm run check:types && pnpm run check:api-report",
+    "check:types": "tsc -p tsconfig.check.json",
+    "check:api-report": "api-extractor run",
+    "fix:api-report": "api-extractor run --local",
+    "test": "vitest run --maxWorkers=2",
+    "prepack": "pnpm run build"
+  }
+}
