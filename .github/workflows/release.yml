@@ -1,46 +1,38 @@
+# The file name and the `npm` environment are the identity registered with npm trusted
+# publishing for this package; renaming either one stops publication.
 name: Release
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  id-token: write
 
 concurrency:
   group: npm-release
   cancel-in-progress: false
 
 jobs:
-  publish:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'mike-north/sh-codemod' && github.actor == 'mike-north'
+  release:
+    if: github.repository == 'mike-north/sh-codemod'
     runs-on: ubuntu-latest
     environment: npm
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: env -u NO_COLOR nice pnpm install --frozen-lockfile
-      - name: Keep changesets in the 0.x series
-        run: env -u NO_COLOR nice pnpm check:changesets
-      - name: Keep current and projected versions in the 0.x series
-        if: ${{ !cancelled() }}
-        run: env -u NO_COLOR nice pnpm check:versions
-      - run: env -u NO_COLOR nice pnpm build
-      - run: env -u NO_COLOR nice pnpm check
-      - run: env -u NO_COLOR nice pnpm test
-      - name: Check tracked generated artifacts
-        run: git diff --exit-code
-      - name: Check staged generated artifacts
-        run: git diff --cached --exit-code
-      - name: Plan only unpublished versions
-        run: env -u NO_COLOR nice pnpm release:plan
-      - name: Publish planned versions through native npm OIDC
-        run: env -u NO_COLOR nice pnpm release:publish
+      - uses: changesets/action@v1
+        with:
+          version: pnpm version:packages
+          publish: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

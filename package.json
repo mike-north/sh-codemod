@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@changesets/assemble-release-plan": "7.0.0",
+    "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@changesets/config": "4.0.1",
     "@changesets/parse": "1.0.0",
@@ -78,8 +79,7 @@
     "test:tooling": "node --test --test-concurrency=1 scripts/*.test.ts",
     "test:ecosystem-map": "node --test scripts/ecosystem-map.test.ts",
     "version:packages": "pnpm check:release && changeset version && pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile && pnpm check:release",
-    "release:plan": "pnpm check:release && node scripts/publishing.ts plan",
-    "release:publish": "pnpm check:release && node scripts/publish.ts .tmp/publish-plan.json",
+    "release": "pnpm build && pnpm check && pnpm test && pnpm check:release && node scripts/publishing.ts guard && changeset publish",
     "check:ecosystem-map": "pnpm test:ecosystem-map"
   }
 }
