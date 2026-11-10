@@ -20,7 +20,15 @@ import { fileURLToPath } from 'node:url';
 const policy =
   /stays in the 0\.x series until the owner declares the shape stable.*no override flag/is;
 const gate = resolve('scripts/check-release.ts');
-const config = await readFile('.changeset/config.json', 'utf8');
+/**
+ * The repository's GitHub changelog generator needs a network token; fixtures keep every other
+ * setting but use the CLI's offline generator so `changeset version` runs hermetically.
+ */
+const config = (await readFile('.changeset/config.json', 'utf8')).replace(
+  /"changelog": \[[^\]]*\]/u,
+  '"changelog": "@changesets/cli/changelog"',
+);
+assert.match(config, /@changesets\/cli\/changelog/u);
 
 /** Isolate fixture writes inside this worktree and remove them even on failure. */
 async function fixture(

@@ -34,8 +34,13 @@ interface IResult {
 
 /** Exercise the installed command without relying on Git eligibility or any registry client. */
 const gate = resolve('scripts/check-release.ts');
-/** The real singleton configuration is reused without introducing another release policy. */
-const configuration = await readFile('.changeset/config.json');
+/** The real singleton configuration is reused without introducing another release policy; fixtures keep the repository settings but use the offline changelog generator (the GitHub one needs a token). */
+const configuration = (
+  await readFile('.changeset/config.json', 'utf8')
+).replace(
+  /"changelog": \[[^\]]*\]/u,
+  '"changelog": "@changesets/cli/changelog"',
+);
 
 /** Every directory and file's raw bytes participate, including empty directories and non-Markdown inputs. */
 async function inventory(directory: string): Promise<Record<string, string>> {
