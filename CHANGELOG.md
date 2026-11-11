@@ -1,5 +1,11 @@
 # sh-codemod
 
+## 0.1.2
+
+### Patch Changes
+
+- [#3](https://github.com/mike-north/sh-codemod/pull/3) [`d0e9a20`](https://github.com/mike-north/sh-codemod/commit/d0e9a20565d95e5db2c91deac5889651e4cbfc0b) Thanks [@mike-north](https://github.com/mike-north)! - Rewrite the README for users: what the package does, installation, a quickstart with real output, and the format and createEditor APIs.
+
 ## 0.1.1
 
 ### Patch Changes
