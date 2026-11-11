@@ -6,33 +6,92 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
-
+# The registry check, the Version Packages pull request and publication share one lock so
+# that a queued publication always sees the registry state left by the run before it.
 concurrency:
   group: npm-release
   cancel-in-progress: false
 
+# No authority by default; each job below grants only its own.
+permissions: {}
+
 jobs:
-  release:
+  # Decide, without any write authority or OIDC, whether this commit versions, publishes or
+  # does nothing: pending changesets mean version; none pending and an unpublished version
+  # means publish.
+  select-mode:
     if: github.repository == 'mike-north/sh-codemod'
     runs-on: ubuntu-latest
-    environment: npm
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: env -u NO_COLOR nice pnpm install --frozen-lockfile
-      - uses: changesets/action@v1
+      - uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        id: select-mode
+
+  # Open or update the "Version Packages" pull request. Needs write access to contents and
+  # pull requests, and never receives OIDC.
+  version:
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          version: pnpm version:packages
-          publish: pnpm release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+          # Changesets locates the commits that introduced each changeset.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: env -u NO_COLOR nice pnpm install --frozen-lockfile
+      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: pnpm version:packages
+
+  # Publish to npm through trusted publishing, then push a `v<version>` tag and create a
+  # GitHub Release for each published version. Only this job receives OIDC; `contents: write`
+  # is what pushing tags and creating releases requires.
+  publish:
+    needs: select-mode
+    if: needs.select-mode.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: env -u NO_COLOR nice pnpm install --frozen-lockfile
+      # `pnpm release` builds, runs every check and the 0.x gates, enforces the publishing
+      # guard, then runs `changeset publish`; the action hands that command the output file
+      # in which the Changesets CLI records each published package and its tag.
+      - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          script: pnpm release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push-git-tags: true
+          create-github-releases: true
