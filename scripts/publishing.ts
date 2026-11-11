@@ -30,9 +30,61 @@ export function record(value: unknown): Record<string, unknown> {
   return value;
 }
 
+/** Repository guard shared by every job so a fork can never reach the release machinery. */
+const repositoryGuard = `github.repository == '${publisher.owner}/${publisher.repository}'`;
+
+/**
+ * The Changesets action release that the workflow's three sub-actions are pinned to. Every
+ * third-party action is referenced by full commit SHA; this one is checked by value because the
+ * sub-actions must all come from the same release for their hand-off (mode, publish output) to
+ * be consistent.
+ * @internal
+ */
+export const changesetsActionSha = 'ae32849d5ba541f9ae29e40e22a623bc13562f51';
+
+/** Authority each job may hold; only `publish` receives OIDC, and only it may name the environment. */
+const jobPermissions = {
+  'select-mode': { contents: 'read' },
+  version: { contents: 'write', 'pull-requests': 'write' },
+  publish: { contents: 'write', 'id-token': 'write' },
+} as const;
+
+/** Steps of one job as validated records; anything else is a malformed workflow. */
+function stepsOf(
+  job: Record<string, unknown>,
+  name: string,
+): Record<string, unknown>[] {
+  if (!Array.isArray(job.steps)) {
+    throw new Error(`Missing steps in release job ${name}`);
+  }
+  const entries: unknown[] = job.steps;
+  return entries.map((entry) => record(entry));
+}
+
+/** The single step of a job that runs the named Changesets sub-action, with its inputs. */
+function changesetsStep(
+  steps: Record<string, unknown>[],
+  subAction: string,
+): Record<string, unknown> {
+  const matches = steps.filter(
+    (step) =>
+      typeof step.uses === 'string' &&
+      step.uses === `changesets/action/${subAction}@${changesetsActionSha}`,
+  );
+  const [match] = matches;
+  if (matches.length !== 1 || match === undefined) {
+    throw new Error(
+      `Release job must run changesets/action/${subAction} pinned to ${changesetsActionSha} exactly once`,
+    );
+  }
+  return match;
+}
+
 /**
  * Validate that the release workflow keeps the identity npm trusted publishing registered
- * (repository, file name, environment) and the minimum authority the Changesets action needs.
+ * (repository, file name, environment) and splits authority across three jobs: `select-mode`
+ * (read only), `version` (contents and pull-request write) and `publish` (contents write for
+ * tags and GitHub Releases, plus OIDC), with nothing granted at the workflow level.
  * @internal
  */
 export async function checkWorkflow(root: string): Promise<void> {
@@ -61,59 +113,92 @@ export async function checkWorkflow(root: string): Promise<void> {
   ) {
     throw new Error('Release workflow must run only on push to main');
   }
-  const jobs = record(workflow.jobs);
-  if (Object.keys(jobs).length !== 1 || !('release' in jobs)) {
-    throw new Error('Release workflow must contain only the release job');
-  }
-  const job = record(jobs.release);
-  if (job.if !== "github.repository == 'mike-north/sh-codemod'") {
-    throw new Error('Release job must be restricted to mike-north/sh-codemod');
-  }
-  if (job['runs-on'] !== 'ubuntu-latest') {
-    throw new Error('Release requires a hosted runner');
-  }
-  const permissions = {
-    contents: 'write',
-    'pull-requests': 'write',
-    'id-token': 'write',
-  };
-  if (
-    JSON.stringify(workflow.permissions) !== JSON.stringify(permissions) ||
-    job.permissions !== undefined
-  ) {
+  if (JSON.stringify(workflow.permissions) !== '{}') {
     throw new Error(
-      'Workflow permissions must be exactly contents, pull-requests and id-token write',
+      'Release workflow must grant no permissions at workflow level',
     );
   }
-  if (job.environment !== publisher.environment) {
-    throw new Error(`Publishing environment must be ${publisher.environment}`);
+  const jobs = record(workflow.jobs);
+  if (
+    JSON.stringify(Object.keys(jobs).sort()) !==
+    JSON.stringify(Object.keys(jobPermissions).sort())
+  ) {
+    throw new Error(
+      'Release workflow must contain exactly the select-mode, version and publish jobs',
+    );
   }
-  if (!Array.isArray(job.steps)) {
-    throw new Error('Missing release steps');
-  }
-  const steps: unknown[] = job.steps;
-  let versionPullRequests = false;
-  for (const entry of steps) {
-    const step = record(entry);
-    if (typeof step.uses !== 'string') {
-      continue;
+  const modeGuards = {
+    'select-mode': repositoryGuard,
+    version: "needs.select-mode.outputs.mode == 'version'",
+    publish: "needs.select-mode.outputs.mode == 'publish'",
+  };
+  for (const name of ['select-mode', 'version', 'publish'] as const) {
+    const job = record(jobs[name]);
+    if (job['runs-on'] !== 'ubuntu-latest') {
+      throw new Error('Release requires a hosted runner');
     }
     if (
-      step.uses.startsWith('actions/checkout@') &&
-      record(step.with)['persist-credentials'] !== false
+      JSON.stringify(job.permissions) !== JSON.stringify(jobPermissions[name])
     ) {
-      throw new Error('Checkout credentials must not persist');
+      throw new Error(`Release job ${name} has the wrong permissions`);
     }
-    if (step.uses.startsWith('changesets/action@')) {
-      const inputs = record(step.with);
-      versionPullRequests =
-        inputs.version === 'pnpm version:packages' &&
-        inputs.publish === 'pnpm release';
+    if (job.if !== modeGuards[name]) {
+      throw new Error(`Release job ${name} has the wrong condition`);
+    }
+    if (name !== 'select-mode' && job.needs !== 'select-mode') {
+      throw new Error(`Release job ${name} must depend on select-mode`);
+    }
+    // Trusted publishing is registered against the environment of the publishing job only.
+    if (
+      name === 'publish'
+        ? job.environment !== publisher.environment
+        : job.environment !== undefined
+    ) {
+      throw new Error(
+        `Only the publish job may, and must, use the ${publisher.environment} environment`,
+      );
+    }
+    for (const step of stepsOf(job, name)) {
+      if (typeof step.uses !== 'string') {
+        continue;
+      }
+      if (!/^[^@\s]+@[0-9a-f]{40}$/u.test(step.uses)) {
+        throw new Error(
+          `Action must be pinned by full commit SHA: ${step.uses}`,
+        );
+      }
+      if (
+        step.uses.startsWith('actions/checkout@') &&
+        record(step.with)['persist-credentials'] !== false
+      ) {
+        throw new Error('Checkout credentials must not persist');
+      }
     }
   }
-  if (!versionPullRequests) {
+  // Each job's Changesets sub-action takes exactly the commands this repository defines.
+  changesetsStep(
+    stepsOf(record(jobs['select-mode']), 'select-mode'),
+    'select-mode',
+  );
+  const versionInputs = record(
+    changesetsStep(stepsOf(record(jobs.version), 'version'), 'version').with,
+  );
+  if (versionInputs.script !== 'pnpm version:packages') {
+    throw new Error('Version job must run pnpm version:packages');
+  }
+  const publishInputs = record(
+    changesetsStep(stepsOf(record(jobs.publish), 'publish'), 'publish').with,
+  );
+  if (publishInputs.script !== 'pnpm release') {
+    throw new Error('Publish job must run pnpm release');
+  }
+  // Pushing the tag and creating the GitHub Release are what v1 silently stopped doing.
+  if (
+    publishInputs['push-git-tags'] !== true ||
+    publishInputs['create-github-releases'] !== true
+  ) {
     throw new Error(
-      'Release must run the Changesets action with pnpm version:packages and pnpm release',
+      'Publish job must push git tags and create GitHub Releases',
     );
   }
 }
