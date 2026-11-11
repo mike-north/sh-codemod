@@ -809,3 +809,21 @@ await test('the complete direct planner stack resolves to the same installed mod
     await realpath(fileURLToPath(import.meta.resolve('@changesets/parse'))),
   );
 });
+
+/**
+ * The repository states its private-package policy instead of inheriting the Changesets default:
+ * private packages are neither versioned nor tagged, so a changed default cannot alter releases.
+ */
+await test('the changeset configuration pins private packages as neither versioned nor tagged', () => {
+  const written: unknown = JSON.parse(config);
+  assert.ok(
+    typeof written === 'object' &&
+      written !== null &&
+      'privatePackages' in written,
+    'privatePackages must be written explicitly',
+  );
+  assert.deepEqual(written.privatePackages, {
+    version: false,
+    tag: false,
+  });
+});
