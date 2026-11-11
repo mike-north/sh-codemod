@@ -62,7 +62,8 @@ await test('ordinary CI exposes independent G1/G2/map checks and release runs on
   }
   const release = await readFile('.github/workflows/release.yml', 'utf8');
   assert.doesNotMatch(release, /workflow_dispatch/);
-  assert.match(release, /changesets\/action@v1/);
+  assert.match(release, /changesets\/action\/publish@[0-9a-f]{40}/);
+  assert.doesNotMatch(release, /changesets\/action@/);
   assert.match(release, /mike-north\/sh-codemod/);
   assert.doesNotMatch(release, /--provenance|secrets\.(?!GITHUB_TOKEN)/);
 });
