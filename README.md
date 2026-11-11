@@ -1,17 +1,27 @@
 # sh-codemod
 
-Non-lint services over the [`sh-ast`](https://github.com/mike-north/sh-ast) shell parser:
+[![npm version](https://img.shields.io/npm/v/sh-codemod)](https://www.npmjs.com/package/sh-codemod)
+[![CI](https://github.com/mike-north/sh-codemod/actions/workflows/ci.yml/badge.svg)](https://github.com/mike-north/sh-codemod/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/sh-codemod)](LICENSE)
+
+Whole-file shell formatting and source-preserving AST edits for JavaScript and TypeScript, built
+on the [`sh-ast`](https://github.com/mike-north/sh-ast) shell parser:
 
 - `format` rewrites a whole shell script into the canonical text of mvdan/sh's printer (the
-  `shfmt` style). Whole-file reformatting does not fit ESLint's text-range fix model, so it lives
-  here instead of in the ESLint integration.
+  `shfmt` style).
 - `createEditor` makes AST-aware edits (a codemod) that leave every other byte of the file alone.
-  ESLint's fixer only runs inside a lint pass, and a reprint would reformat the whole file.
 
-> **Local extraction candidate.** Publication has not been performed or verified.
-> Build and pack from this repository for review; the install example names the intended package.
+## When to use it
 
-The package is on the 0.x line: its surface may change between minor releases.
+Use `sh-codemod` when a program needs to **change** shell source. Use
+[`eslint-sh`](https://github.com/mike-north/eslint-sh) when you need to **check** it.
+
+ESLint fixes are text-range replacements that run inside a lint pass. They cannot reformat a
+whole file, and they are not available to a script that is not running ESLint. `sh-codemod`
+covers those cases: reformatting an entire script, and codemods that rewrite one construct (every
+`which` becomes `command -v`, a line is added to the top of every script) without disturbing the
+comments, spacing and line endings around it. It does not parse (that is `sh-ast`), lint, or
+analyze shell.
 
 ## Installation
 
@@ -19,12 +29,41 @@ The package is on the 0.x line: its surface may change between minor releases.
 npm install sh-codemod
 ```
 
-Requires Node 24 or later. It ships ESM and CommonJS builds; the CommonJS build loads the
-ESM-only `sh-ast` with `require`, using Node's synchronous ESM loading support.
+Requires Node 24 or later. The package ships ESM and CommonJS builds with TypeScript declarations;
+the CommonJS build loads the ESM-only `sh-ast` with `require`, using Node's synchronous ESM loading
+support. The package is on the 0.x line, so its surface may change between minor releases.
 
 ```js
 import { format } from 'sh-codemod'; // or: const { format } = require('sh-codemod');
 ```
+
+## Quickstart
+
+```js
+import { createEditor, format } from 'sh-codemod';
+
+console.log(
+  format('if [ -f a ];then\n    echo   hi # greet\nfi\n', { Indent: 2 }),
+);
+// if [ -f a ]; then
+//   echo hi # greet
+// fi
+
+const editor = createEditor('which   git  # where?\n');
+editor.replaceNode(editor.ast.Stmts[0].Cmd.Args[0], 'command -v');
+console.log(JSON.stringify(editor.apply()));
+// "command -v   git  # where?\n"
+```
+
+`format` re-prints the whole script. `createEditor` changed only the one word, so the extra
+spaces and the comment survive. The sections below cover each function in full.
+
+## Documentation
+
+- [API reference](docs/api/index.md), generated from the package's declarations and checked in CI.
+- [CHANGELOG](CHANGELOG.md), maintained by Changesets from the changes in each release.
+- [Repository tooling](docs/tooling.md), for how the package is built, checked and released.
+- [LICENSE](LICENSE), MIT.
 
 ## `format(text, options?)`
 
@@ -57,14 +96,19 @@ format('if true;then\n    echo   hi # greet\nfi');
 | `Minify`           | `boolean`          | `false`    | Drop comments, indentation and optional whitespace. Not allowed with `SingleLine`.           |
 | `SingleLine`       | `boolean`          | `false`    | Print on one line where possible (newlines after comments and around here-documents remain). |
 | `KeepPadding`      | `boolean`          | `false`    | Best-effort column preservation. Deprecated upstream, which plans to remove it.              |
-| `dialect`          | `LangVariant`      | `LangBash` | Numeric language value imported from `sh-ast`; the parser decides operation validity. |
+| `dialect`          | `LangVariant`      | `LangBash` | Numeric language value imported from `sh-ast`; the parser decides operation validity.        |
 | `filename`         | `string`           | none       | Name used in syntax-error messages and on `FormatSyntaxError.filename`.                      |
 
 ```js
 import { LangPOSIX } from 'sh-ast';
 import { format } from 'sh-codemod';
 
-format(script, { Indent: 2, SwitchCaseIndent: true, dialect: LangPOSIX, filename: 'deploy.sh' });
+format(script, {
+  Indent: 2,
+  SwitchCaseIndent: true,
+  dialect: LangPOSIX,
+  filename: 'deploy.sh',
+});
 ```
 
 `LangVariant` is re-exported directly from `sh-ast`. This extraction deliberately replaces
@@ -111,7 +155,7 @@ try {
 
 | Property     | Meaning                                                                              |
 | ------------ | ------------------------------------------------------------------------------------ |
-| `code`       | `'SH_CODEMOD_FORMAT_SYNTAX'`, stable across releases.                                 |
+| `code`       | `'SH_CODEMOD_FORMAT_SYNTAX'`, stable across releases.                                |
 | `offset`     | Zero-based UTF-16 index into the string you passed (`text[offset]` is the position). |
 | `line`       | One-based line; a `\r\n` pair is one line break.                                     |
 | `column`     | One-based UTF-16 column, as ESLint reports it.                                       |
@@ -137,7 +181,8 @@ import { createEditor } from 'sh-codemod';
 import { walk } from 'sh-ast';
 
 // Codemod: replace the non-portable `which` with `command -v`, and add `set -eu` on top.
-const source = '#!/bin/sh\n# find 🎉 tools\nwhich   git  # where?\nwhich 你好\n';
+const source =
+  '#!/bin/sh\n# find 🎉 tools\nwhich   git  # where?\nwhich 你好\n';
 
 const editor = createEditor(source);
 
@@ -216,7 +261,7 @@ mvdan/sh printer, behind Prettier. This package calls the printer directly, so t
 Prettier dependency and the printer options version-lock to the `sh-ast` this package pins.
 Compared with its [documented options](https://www.npmjs.com/package/prettier-plugin-sh) (v0.20):
 
-| prettier-plugin-sh                                                                                                                                                  | `sh-codemod`                                                                                                                                                                                                               |
+| prettier-plugin-sh                                                                                                                                                  | `sh-codemod`                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runs inside Prettier; formats by file type                                                                                                                          | A function on strings: `format(text, options)`. No file discovery, no config files, no CLI.                                                                                                                                             |
 | Also formats Dockerfile, `.properties`, `.gitignore`, dotenv, hosts, jvmoptions                                                                                     | Shell only.                                                                                                                                                                                                                             |

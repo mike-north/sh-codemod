@@ -36,7 +36,7 @@ await test('strict checks and complete API documentation are executable root res
   assert.deepEqual(Object.keys(record(manifest.dependencies)), ['sh-ast']);
 });
 
-await test('ordinary CI exposes independent G1/G2/map checks and release remains owner dispatched', async () => {
+await test('ordinary CI exposes independent G1/G2/map checks and release runs only through Changesets on push to main', async () => {
   const ci = record(
     JSON.parse(
       (await readFile('.github/workflows/ci.yml', 'utf8')).replace(
@@ -61,7 +61,8 @@ await test('ordinary CI exposes independent G1/G2/map checks and release remains
     assert.equal(step.if, '${{ !cancelled() }}');
   }
   const release = await readFile('.github/workflows/release.yml', 'utf8');
-  assert.match(release, /workflow_dispatch/);
+  assert.doesNotMatch(release, /workflow_dispatch/);
+  assert.match(release, /changesets\/action@v1/);
   assert.match(release, /mike-north\/sh-codemod/);
-  assert.doesNotMatch(release, /--provenance|secrets\./);
+  assert.doesNotMatch(release, /--provenance|secrets\.(?!GITHUB_TOKEN)/);
 });

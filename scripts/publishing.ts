@@ -1,12 +1,12 @@
 /**
- * Release infrastructure only: validate the OIDC workflow and enumerate actual
- * publishable packages. No product assessment or readiness state is involved.
+ * Release infrastructure only: validate the Changesets release workflow and authorize the
+ * publishing step to run only for a push to main of the registered repository under OIDC.
+ * No product assessment or readiness state is involved.
  */
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getPackages, type Package } from '@manypkg/get-packages';
 import { parse } from 'yaml';
 
 /** The npm trust identity must agree with the checked workflow and owner setup. @internal */
@@ -30,97 +30,91 @@ export function record(value: unknown): Record<string, unknown> {
   return value;
 }
 
-/** Only publication routing knobs may survive packing; credentials, registry overrides and provenance are outside this private repository's authority. @internal */
-export function publicationConfig(value: unknown): Record<string, unknown> {
-  const config = value === undefined ? {} : record(value);
-  if (
-    Object.keys(config).some(
-      (key) => !['access', 'tag', 'directory'].includes(key),
-    )
-  ) {
-    throw new Error('Unexpected publication configuration');
-  }
-  const directory = config.directory;
-  if (
-    directory !== undefined &&
-    (typeof directory !== 'string' ||
-      isAbsolute(directory) ||
-      directory.split(/[\\/]/u).includes('..'))
-  ) {
-    throw new Error(
-      'Publication artifact directory must stay within its source package',
-    );
-  }
-  return config;
-}
-
-/** Validate dispatch-only authority before any release client can contact a service. @internal */
+/**
+ * Validate that the release workflow keeps the identity npm trusted publishing registered
+ * (repository, file name, environment) and the minimum authority the Changesets action needs.
+ * @internal
+ */
 export async function checkWorkflow(root: string): Promise<void> {
   const text = await readFile(
     join(root, '.github/workflows', publisher.workflow),
     'utf8',
   );
-  if (/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\.|--provenance/u.test(text)) {
+  // The action's own GITHUB_TOKEN is the only secret; an npm credential would defeat OIDC.
+  const secrets = [...text.matchAll(/secrets\.(\w+)/gu)].map(
+    (match) => match[1],
+  );
+  if (
+    /NPM_TOKEN|NODE_AUTH_TOKEN|--provenance/u.test(text) ||
+    secrets.some((name) => name !== 'GITHUB_TOKEN')
+  ) {
     throw new Error(
       'Release workflow must use OIDC without an npm authentication token',
     );
   }
   const workflow = record(parse(text));
   const triggers = record(workflow.on);
+  const push = record(triggers.push);
   if (
     Object.keys(triggers).length !== 1 ||
-    !('workflow_dispatch' in triggers)
+    JSON.stringify(push) !== JSON.stringify({ branches: ['main'] })
   ) {
-    throw new Error(
-      'Release workflow must run only by owner workflow_dispatch',
-    );
+    throw new Error('Release workflow must run only on push to main');
   }
   const jobs = record(workflow.jobs);
-  if (Object.keys(jobs).length !== 1 || !('publish' in jobs)) {
-    throw new Error(
-      'Release workflow must contain only the owner-dispatched publish job',
-    );
+  if (Object.keys(jobs).length !== 1 || !('release' in jobs)) {
+    throw new Error('Release workflow must contain only the release job');
   }
-  const job = record(jobs.publish);
-  const expectedGuard =
-    "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'mike-north/sh-codemod' && github.actor == 'mike-north'";
-  if (job.if !== expectedGuard) {
-    throw new Error(
-      'Release job must require the exact owner-dispatch conjunction',
-    );
+  const job = record(jobs.release);
+  if (job.if !== "github.repository == 'mike-north/sh-codemod'") {
+    throw new Error('Release job must be restricted to mike-north/sh-codemod');
   }
   if (job['runs-on'] !== 'ubuntu-latest') {
     throw new Error('Release requires a hosted runner');
   }
+  const permissions = {
+    contents: 'write',
+    'pull-requests': 'write',
+    'id-token': 'write',
+  };
   if (
-    JSON.stringify(workflow.permissions) !==
-    JSON.stringify({ contents: 'read' })
+    JSON.stringify(workflow.permissions) !== JSON.stringify(permissions) ||
+    job.permissions !== undefined
   ) {
-    throw new Error('Workflow must have contents read only');
+    throw new Error(
+      'Workflow permissions must be exactly contents, pull-requests and id-token write',
+    );
+  }
+  if (job.environment !== publisher.environment) {
+    throw new Error(`Publishing environment must be ${publisher.environment}`);
   }
   if (!Array.isArray(job.steps)) {
     throw new Error('Missing release steps');
   }
-  for (const entry of job.steps) {
+  const steps: unknown[] = job.steps;
+  let versionPullRequests = false;
+  for (const entry of steps) {
     const step = record(entry);
+    if (typeof step.uses !== 'string') {
+      continue;
+    }
     if (
-      typeof step.uses === 'string' &&
       step.uses.startsWith('actions/checkout@') &&
       record(step.with)['persist-credentials'] !== false
     ) {
       throw new Error('Checkout credentials must not persist');
     }
+    if (step.uses.startsWith('changesets/action@')) {
+      const inputs = record(step.with);
+      versionPullRequests =
+        inputs.version === 'pnpm version:packages' &&
+        inputs.publish === 'pnpm release';
+    }
   }
-  const publish = record(jobs.publish);
-  if (publish.environment !== publisher.environment) {
-    throw new Error(`Publishing environment must be ${publisher.environment}`);
-  }
-  if (
-    Object.keys(record(publish.permissions)).length !== 2 ||
-    record(publish.permissions)['id-token'] !== 'write' ||
-    record(publish.permissions).contents !== 'read'
-  ) {
-    throw new Error('Publishing requires id-token: write');
+  if (!versionPullRequests) {
+    throw new Error(
+      'Release must run the Changesets action with pnpm version:packages and pnpm release',
+    );
   }
 }
 
@@ -155,15 +149,19 @@ export function checkRuntime(): void {
   }
 }
 
-/** Planning and publication share the same owner-controlled workflow boundary. @internal */
-export function assertOwnerDispatch(): void {
+/**
+ * Publication is authorized only for a push to main of the registered repository inside the
+ * workflow's OIDC environment, with no token fallback that could bypass trusted publishing.
+ * Merging the Version Packages pull request is the owner's act; the pusher is not checked.
+ * @internal
+ */
+export function assertReleaseAuthority(): void {
   if (
     process.env.GITHUB_ACTIONS !== 'true' ||
-    process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+    process.env.GITHUB_EVENT_NAME !== 'push' ||
     process.env.GITHUB_REF !== 'refs/heads/main' ||
     process.env.GITHUB_REPOSITORY !==
       `${publisher.owner}/${publisher.repository}` ||
-    process.env.GITHUB_ACTOR !== publisher.owner ||
     !process.env.ACTIONS_ID_TOKEN_REQUEST_URL ||
     !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ||
     // Native npm must have no environment-supplied token fallback if OIDC fails.
@@ -176,69 +174,30 @@ export function assertOwnerDispatch(): void {
     )
   ) {
     throw new Error(
-      'Publication and registry planning require the owner-dispatched main workflow and its OIDC environment',
+      'Publication requires a push to main of mike-north/sh-codemod in the release workflow and its OIDC environment',
     );
   }
 }
 
-/** Public source inventory includes the singleton root exactly once; complete planned-release stability is checked separately. @internal */
-export async function publicPackages(root: string): Promise<Package[]> {
-  const workspace = await getPackages(root);
-  const packages = [
-    ...(workspace.rootPackage ? [workspace.rootPackage] : []),
-    ...workspace.packages,
-  ];
-  const publicSources = [
-    ...new Map(packages.map((pkg) => [pkg.dir, pkg])).values(),
-  ].filter((pkg) => !pkg.packageJson.private);
-  for (const pkg of publicSources) {
-    publicationConfig(pkg.packageJson.publishConfig);
-  }
-  return publicSources;
-}
-
-// Importing the shared trust contract never starts a plan or service request.
+// Importing the shared trust contract never starts a check or a service request.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const mode = process.argv[2];
     if (
       process.argv.length !== 3 ||
-      (mode !== 'check' && mode !== 'runtime' && mode !== 'plan')
+      (mode !== 'check' && mode !== 'runtime' && mode !== 'guard')
     ) {
-      throw new Error('Expected publishing mode: check, runtime, or plan');
+      throw new Error('Expected publishing mode: check, runtime, or guard');
     }
-    // Reject before workflow/source reads or any client/registry command.
-    if (mode === 'plan') {
-      assertOwnerDispatch();
+    // Reject before any workflow read or registry command.
+    if (mode === 'guard') {
+      assertReleaseAuthority();
     }
     await checkWorkflow(process.cwd());
-    if (mode === 'runtime') {
-      checkRuntime();
-    } else if (mode === 'check') {
-      console.log(
-        'Owner-dispatched trusted-publishing workflow checked; no service calls made.',
-      );
+    if (mode === 'check') {
+      console.log('Release workflow checked; no service calls made.');
     } else {
       checkRuntime();
-      await publicPackages(process.cwd());
-      // Changesets owns registry-aware selection and dependency chunk ordering.
-      // Its publish dispatcher is deliberately unused: native npm alone publishes.
-      const result = spawnSync(
-        process.execPath,
-        [
-          fileURLToPath(import.meta.resolve('@changesets/cli/bin.js')),
-          'publish-plan',
-          '--output',
-          '.tmp/publish-plan.json',
-        ],
-        { stdio: 'inherit' },
-      );
-      if (result.error) {
-        throw result.error;
-      }
-      if (result.status !== 0) {
-        throw new Error('Changesets publish planning failed');
-      }
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
