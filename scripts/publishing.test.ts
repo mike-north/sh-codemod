@@ -1,4 +1,4 @@
-/** Release workflow policy is checked structurally; no test commissions trust or contacts a service. */
+/** Release workflow tests check its structure and runtime guard without contacting a service. */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';

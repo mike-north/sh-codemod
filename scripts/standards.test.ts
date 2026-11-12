@@ -1,4 +1,4 @@
-/** Accepted tooling must cover maintained code and reserve owner-controlled release boundaries. */
+/** Accepted tooling must cover maintained code and reserve maintainer-controlled release boundaries. */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';

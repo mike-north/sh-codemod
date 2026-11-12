@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 /** Every failure must explain the version boundary and the absence of a bypass. */
 const policy =
-  /This project stays in the 0\.x series\. There is no override flag\./;
+  /This project stays in the 0\.x series until the maintainer declares the shape stable\. There is no override flag\./;
 const gate = resolve('scripts/check-release.ts');
 /**
  * The repository's GitHub changelog generator needs a network token; fixtures keep every other
