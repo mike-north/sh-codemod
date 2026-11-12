@@ -13,12 +13,11 @@ No implicit merge, registry, tag or release authority exists.
 <!-- ecosystem-map:begin -->
 # Ecosystem map
 
-Map version: 3. This file is kept verbatim, byte for byte, in every repository of the
-ecosystem. It changes only with the version number
-raised, and the new text is then copied to every repository in one pass. A copy that differs
-from the others is a defect in that repository, not a local variant. Nothing in this file names
-a branch, a commit, a terminal, a date, or a person other than the owner, so that it never has to
-change for operational reasons.
+Map version: 4. This file is kept verbatim, byte for byte, in every repository of the ecosystem. It
+changes only with the version number raised, and the new text is then copied to every repository in
+one pass. A copy that differs from the others is a defect in that repository, not a local variant.
+Nothing in this file names a branch, a commit, a terminal, a date, or a person, so that it never has
+to change for operational reasons.
 
 ## Purpose of the ecosystem
 
