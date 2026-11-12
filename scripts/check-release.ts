@@ -1,13 +1,13 @@
-/** Owner-controlled stability policy: present inputs and every projected release must stay below 1.x. */
+/** Stability policy: present inputs and every projected release must stay below 1.x. */
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseChangesetFile } from '@changesets/parse';
 import { projectReleasePlan } from './release-plan.ts';
 
-/** All failures retain the owner's exclusive authority over stabilization. */
+/** Every failure explains the version boundary and absence of an override. */
 const policy =
-  'This project stays in the 0.x series until the owner declares the shape stable. There is no override flag.';
+  'This project stays in the 0.x series. There is no override flag.';
 /** Build products, dependencies and isolated evidence are not maintained source metadata. */
 const excluded = new Set([
   '.git',
@@ -37,7 +37,7 @@ async function* files(directory: string): AsyncGenerator<string> {
   }
 }
 
-/** G1 uses the CLI's parser, including quoted declarations and empty frontmatter. */
+/** The changeset check uses the CLI's parser, including quoted declarations and empty frontmatter. */
 async function checkChangesets(root: string): Promise<void> {
   const directory = join(root, '.changeset');
   for await (const path of files(directory)) {
@@ -87,7 +87,7 @@ export function assertPlanVersions(
   }
 }
 
-/** G2 exempts private source metadata alone, then checks the entire supported library projection. */
+/** The version check exempts private source metadata alone, then checks the entire supported library projection. */
 async function checkVersions(root: string): Promise<void> {
   for await (const path of files(root)) {
     if (!path.endsWith('/package.json')) {

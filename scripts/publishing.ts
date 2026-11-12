@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-/** The npm trust identity must agree with the checked workflow and owner setup. @internal */
+/** The npm trust identity must agree with the checked workflow and trusted publishing configuration. @internal */
 export const publisher = {
   owner: 'mike-north',
   repository: 'sh-codemod',
@@ -237,7 +237,7 @@ export function checkRuntime(): void {
 /**
  * Publication is authorized only for a push to main of the registered repository inside the
  * workflow's OIDC environment, with no token fallback that could bypass trusted publishing.
- * Merging the Version Packages pull request is the owner's act; the pusher is not checked.
+ * The Version Packages pull request is merged through review; the pusher is not checked.
  * @internal
  */
 export function assertReleaseAuthority(): void {
