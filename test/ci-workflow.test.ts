@@ -105,6 +105,9 @@ function gateCommands(config: IWorkflow): readonly string[] {
   ]);
   expect(actions[0]?.with?.['persist-credentials']).toBe(false);
   expect(String(actions[1]?.with?.['node-version'])).toBe('24.14.0');
+  expect(actions[2]?.uses).toBe(
+    'pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115',
+  );
   const manifest = record(
     JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
