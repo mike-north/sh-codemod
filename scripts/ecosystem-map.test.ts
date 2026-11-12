@@ -1,10 +1,10 @@
-/** The shared responsibility contract changes only with an owner-ratified payload. */
+/** The shared responsibility contract is pinned to the canonical payload. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-/** Pin the owner's canonical bytes, independently of the repository's local copy. */
+/** Pin the canonical bytes, independently of the repository's local copy. */
 const canonicalDigest =
   'fa56cde52a39b762c76bcff9707f7a9cda5274fa5cdff6a953909418648ec144';
 
@@ -37,7 +37,7 @@ function extractMap(instructions: string): string {
   return instructions.slice(start, end.index);
 }
 
-await test("the ecosystem map matches the owner's complete canonical bytes", async () => {
+await test('the ecosystem map matches the complete canonical bytes', async () => {
   const instructions = await readFile('AGENTS.md', 'utf8');
   const payload = extractMap(instructions);
   assert.ok(

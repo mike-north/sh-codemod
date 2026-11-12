@@ -14,7 +14,7 @@ on the [`sh-ast`](https://github.com/mike-north/sh-ast) shell parser:
 ## When to use it
 
 Use `sh-codemod` when a program needs to **change** shell source. Use
-[`eslint-sh`](https://github.com/mike-north/eslint-sh) when you need to **check** it.
+`eslint-sh` when you need to **check** it.
 
 ESLint fixes are text-range replacements that run inside a lint pass. They cannot reformat a
 whole file, and they are not available to a script that is not running ESLint. `sh-codemod`
@@ -63,6 +63,8 @@ spaces and the comment survive. The sections below cover each function in full.
 - [API reference](docs/api/index.md), generated from the package's declarations and checked in CI.
 - [CHANGELOG](CHANGELOG.md), maintained by Changesets from the changes in each release.
 - [Repository tooling](docs/tooling.md), for how the package is built, checked and released.
+- [Contributing](CONTRIBUTING.md), for development and pull request guidance.
+- [Security policy](SECURITY.md), for reporting vulnerabilities.
 - [LICENSE](LICENSE), MIT.
 
 ## `format(text, options?)`
