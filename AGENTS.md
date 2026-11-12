@@ -6,10 +6,9 @@ Preserve producer-native numeric LangVariant, public errors and ESM/CJS export r
 
 Write outcome tests first. Document durable semantic intent for modules, types, constants,
 functions and classes. Keep progress in work records. Every suppression needs a narrow reason.
-Only Mike decides stabilization beyond 0.x, merging and publication. Tooling never commissions
-trust or first publication. No implicit merge, registry, tag or release authority exists.
-GitHub Copilot reviews on the owner's pull requests are authorized, including private code.
-
+Only the maintainer decides stabilization beyond 0.x, merging and publication.
+Tooling never commissions npm trust or a first publication.
+No implicit merge, registry, tag or release authority exists.
 
 <!-- ecosystem-map:begin -->
 # Ecosystem map
