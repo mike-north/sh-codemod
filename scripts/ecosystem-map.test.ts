@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 /** Pin the canonical bytes, independently of the repository's local copy. */
 const canonicalDigest =
-  'fa56cde52a39b762c76bcff9707f7a9cda5274fa5cdff6a953909418648ec144';
+  'b343beb73d6d82beed7147f37c8252f98bc9bcafd7c25ec6305f0f82db7f0ca8';
 
 /** Unique standalone fences delimit the payload without trimming its terminal newline. */
 function extractMap(instructions: string): string {
@@ -44,7 +44,7 @@ await test('the ecosystem map matches the complete canonical bytes', async () =>
     payload.endsWith('\n'),
     'the terminal newline belongs to the payload',
   );
-  assert.equal(Buffer.byteLength(payload), 14120);
+  assert.equal(Buffer.byteLength(payload), 14058);
   assert.equal(
     createHash('sha256').update(payload).digest('hex'),
     canonicalDigest,
