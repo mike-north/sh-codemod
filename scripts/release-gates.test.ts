@@ -16,9 +16,9 @@ import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-/** Every failure must explain the owner's authority and the absence of a bypass. */
+/** Every failure must explain the version boundary and the absence of a bypass. */
 const policy =
-  /stays in the 0\.x series until the owner declares the shape stable.*no override flag/is;
+  /This project stays in the 0\.x series until the maintainer declares the shape stable\. There is no override flag\./;
 const gate = resolve('scripts/check-release.ts');
 /**
  * The repository's GitHub changelog generator needs a network token; fixtures keep every other
@@ -119,13 +119,13 @@ function check(root: string, mode: string, fails: boolean): string {
   return output;
 }
 
-await test('G1 rejects a major changeset', async () => {
+await test('The changeset check rejects a major changeset', async () => {
   await fixture('0.2.0', 'major', (root) => {
     check(root, 'changesets', true);
   });
 });
 
-await test('G2 rejects existing 1.0.0 and later versions, including prereleases', async () => {
+await test('the version check rejects existing 1.0.0 and later versions, including prereleases', async () => {
   for (const version of ['1.0.0', '2.3.0', '1.0.0-beta.1']) {
     await fixture(version, undefined, (root) => {
       check(root, 'versions', true);
@@ -133,7 +133,7 @@ await test('G2 rejects existing 1.0.0 and later versions, including prereleases'
   }
 });
 
-await test('G2 rejects the real Changesets projection from 0.x to 1.0.0', async () => {
+await test('the version check rejects the real Changesets projection from 0.x to 1.0.0', async () => {
   await fixture('0.2.0', 'major', (root) => {
     assert.match(check(root, 'versions', true), /1\.0\.0/);
   });
@@ -146,7 +146,7 @@ await test('a 0.x manifest and minor changeset pass both gates', async () => {
   });
 });
 
-await test('G1 checks nested changesets and quoted bumps', async () => {
+await test('The changeset check checks nested changesets and quoted bumps', async () => {
   await fixture('0.2.0', undefined, async (root) => {
     await mkdir(join(root, '.changeset/nested'));
     await writeFile(
@@ -157,7 +157,7 @@ await test('G1 checks nested changesets and quoted bumps', async () => {
   });
 });
 
-await test('G1 accepts empty changesets and does not mistake prose for a bump', async () => {
+await test('The changeset check accepts empty changesets and does not mistake prose for a bump', async () => {
   await fixture('0.2.0', 'minor', async (root) => {
     await writeFile(
       join(root, '.changeset/empty.md'),
@@ -167,13 +167,13 @@ await test('G1 accepts empty changesets and does not mistake prose for a bump', 
   });
 });
 
-await test('G1 fails closed on malformed frontmatter', async () => {
+await test('The changeset check fails closed on malformed frontmatter', async () => {
   await fixture('0.2.0', 'unknown', (root) => {
     check(root, 'changesets', true);
   });
 });
 
-await test('G2 checks publishable manifests outside workspace globs', async () => {
+await test('the version check checks publishable manifests outside workspace globs', async () => {
   await fixture('0.2.0', undefined, async (root) => {
     await mkdir(join(root, 'tools'));
     await writeFile(
@@ -184,7 +184,7 @@ await test('G2 checks publishable manifests outside workspace globs', async () =
   });
 });
 
-/** Publication eligibility never grants an exception to the owner's version boundary. */
+/** Publication eligibility never grants an exception to the version boundary. */
 const manifestLocations: readonly string[] = [
   'package.json',
   'packages/example/package.json',
@@ -194,7 +194,7 @@ const privacyStates: readonly boolean[] = [false];
 
 for (const location of manifestLocations) {
   for (const privatePackage of privacyStates) {
-    await test(`G2 rejects non-0.x or invalid versions at ${location}, private=${String(privatePackage)}`, async () => {
+    await test(`the version check rejects non-0.x or invalid versions at ${location}, private=${String(privatePackage)}`, async () => {
       for (const version of [
         '1.0.0',
         '5.0.0',
@@ -221,7 +221,7 @@ for (const location of manifestLocations) {
   }
 }
 
-await test('G2 accepts valid 0.x private and publishable manifests, including the root', async () => {
+await test('the version check accepts valid 0.x private and publishable manifests, including the root', async () => {
   for (const location of manifestLocations) {
     for (const privatePackage of privacyStates) {
       await fixture('0.2.0', 'minor', async (root) => {
@@ -242,7 +242,7 @@ await test('G2 accepts valid 0.x private and publishable manifests, including th
   }
 });
 
-await test('G2 fails closed for invalid versions and planner errors', async () => {
+await test('the version check fails closed for invalid versions and planner errors', async () => {
   await fixture('invalid', undefined, (root) => {
     check(root, 'versions', true);
   });
@@ -282,7 +282,7 @@ await test('the version command produces a 0.x version and changelog', async () 
   });
 });
 
-await test('G1 accepts the installed CLI empty changeset and major prose', async () => {
+await test('The changeset check accepts the installed CLI empty changeset and major prose', async () => {
   await fixture('0.8.0', undefined, async (root) => {
     changeset(root, ['add', '--empty']);
     const name = (await readdir(join(root, '.changeset'))).find((name) =>
@@ -302,7 +302,7 @@ await test('G1 accepts the installed CLI empty changeset and major prose', async
   });
 });
 
-await test('G2 validates complete SemVer independently of the major boundary', async () => {
+await test('the version check validates complete SemVer independently of the major boundary', async () => {
   for (const version of [
     '0.8.0-rc..1',
     '0.8.0-01',
@@ -334,7 +334,7 @@ await test('G2 validates complete SemVer independently of the major boundary', a
   }
 });
 
-await test('G2 accepts a shallow detached checkout without main history', async () => {
+await test('the version check accepts a shallow detached checkout without main history', async () => {
   await fixture('0.8.0', undefined, (root) => {
     const clone = join(root, 'checkout');
     git(root, ['clone', '--depth=1', '--no-local', `file://${root}`, clone]);
@@ -353,7 +353,7 @@ await test('G2 accepts a shallow detached checkout without main history', async 
   });
 });
 
-await test('G2 accepts an empty next plan after Version Packages consumes changesets', async () => {
+await test('the version check accepts an empty next plan after Version Packages consumes changesets', async () => {
   await fixture('0.8.0', 'minor', async (root) => {
     git(root, ['checkout', '-b', 'version-packages']);
     changeset(root, ['status', '--output=before.json']);
@@ -377,7 +377,7 @@ await test('G2 accepts an empty next plan after Version Packages consumes change
   });
 });
 
-await test('G2 agrees with installed status and version for fixed, dependency, and prerelease plans', async () => {
+await test('the version check agrees with installed status and version for fixed, dependency, and prerelease plans', async () => {
   for (const prerelease of [false, true]) {
     await fixture('0.8.0', 'minor', async (root) => {
       await mkdir(join(root, 'packages/dependent'));
@@ -435,7 +435,7 @@ await test('G2 agrees with installed status and version for fixed, dependency, a
   }
 });
 
-await test('G2 preserves dependency-only propagation and fails closed on invalid config', async () => {
+await test('the version check preserves dependency-only propagation and fails closed on invalid config', async () => {
   await fixture('0.8.0', 'minor', async (root) => {
     await mkdir(join(root, 'packages/dependent'));
     await writeFile(
@@ -530,7 +530,7 @@ await test('the CLI and direct dependency resolve the identical installed planne
   );
 });
 
-await test('G2 names a dependent reaching 1.0.0 through an explicit major intent', async (context) => {
+await test('the version check names a dependent reaching 1.0.0 through an explicit major intent', async (context) => {
   await fixture('0.8.0', 'minor', async (root) => {
     await mkdir(join(root, 'packages/dependent'));
     await writeFile(
@@ -584,7 +584,7 @@ await test('G2 names a dependent reaching 1.0.0 through an explicit major intent
   });
 });
 
-await test('G2 rejects whitespace and trailing line terminators in manifest versions', async () => {
+await test('the version check rejects whitespace and trailing line terminators in manifest versions', async () => {
   for (const version of [
     '0.8.0\n',
     '0.8.0\r\n',
@@ -661,7 +661,7 @@ await test('missing config and malformed prerelease inputs fail closed', async (
   });
 });
 
-await test('G1 accepts supported type-none intent while G2 checks actual inferred private type-none versions', async (context) => {
+await test('The changeset check accepts supported type-none intent while the version check checks actual inferred private type-none versions', async (context) => {
   await fixture('0.8.0', 'minor', async (root) => {
     for (const [name, version] of [
       ['private-a', '1.0.0'],
