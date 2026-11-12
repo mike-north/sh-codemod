@@ -6,8 +6,9 @@ Preserve producer-native numeric LangVariant, public errors and ESM/CJS export r
 
 Write outcome tests first. Document durable semantic intent for modules, types, constants,
 functions and classes. Keep progress in work records. Every suppression needs a narrow reason.
-The package stays in the 0.x series. Merging, publishing and releases happen only through the
-reviewed release flow; no tooling merges, tags or publishes on its own.
+Only the maintainer decides stabilization beyond 0.x, merging and publication.
+Tooling never commissions npm trust or a first publication.
+No implicit merge, registry, tag or release authority exists.
 
 <!-- ecosystem-map:begin -->
 # Ecosystem map

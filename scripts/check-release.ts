@@ -1,13 +1,13 @@
-/** Stability policy: present inputs and every projected release must stay below 1.x. */
+/** Maintainer-controlled stability policy: present inputs and every projected release must stay below 1.x. */
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseChangesetFile } from '@changesets/parse';
 import { projectReleasePlan } from './release-plan.ts';
 
-/** Every failure explains the version boundary and absence of an override. */
+/** All failures retain the maintainer's exclusive authority over stabilization. */
 const policy =
-  'This project stays in the 0.x series. There is no override flag.';
+  'This project stays in the 0.x series until the maintainer declares the shape stable. There is no override flag.';
 /** Build products, dependencies and isolated evidence are not maintained source metadata. */
 const excluded = new Set([
   '.git',

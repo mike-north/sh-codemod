@@ -237,7 +237,7 @@ export function checkRuntime(): void {
 /**
  * Publication is authorized only for a push to main of the registered repository inside the
  * workflow's OIDC environment, with no token fallback that could bypass trusted publishing.
- * The Version Packages pull request is merged through review; the pusher is not checked.
+ * Merging the Version Packages pull request is the maintainer's act; the pusher is not checked.
  * @internal
  */
 export function assertReleaseAuthority(): void {
