@@ -1,6 +1,6 @@
 {
   "name": "sh-codemod",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Whole-file shell formatting and source-preserving AST edits through sh-ast",
   "type": "module",
   "author": "Mike North <michael.l.north@gmail.com>",

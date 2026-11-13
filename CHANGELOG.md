@@ -1,5 +1,11 @@
 # sh-codemod
 
+## 0.1.3
+
+### Patch Changes
+
+- [#9](https://github.com/mike-north/sh-codemod/pull/9) [`8d3051c`](https://github.com/mike-north/sh-codemod/commit/8d3051cd2a90024dea65f83349a4e7471e34c02e) Thanks [@mike-north](https://github.com/mike-north)! - Point the README at eslint-sh by name rather than by a repository link.
+
 ## 0.1.2
 
 ### Patch Changes
