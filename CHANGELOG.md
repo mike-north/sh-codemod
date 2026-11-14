@@ -4,13 +4,13 @@
 
 ### Patch Changes
 
-- [#9](https://github.com/mike-north/sh-codemod/pull/9) [`8d3051c`](https://github.com/mike-north/sh-codemod/commit/8d3051cd2a90024dea65f83349a4e7471e34c02e) Thanks [@mike-north](https://github.com/mike-north)! - Point the README at eslint-sh by name rather than by a repository link.
+- [#9](https://github.com/mike-north/sh-codemod/pull/9) [`cb6ec62`](https://github.com/mike-north/sh-codemod/commit/cb6ec625f83aafc6d315f1370dc94d5f2913970b) Thanks [@mike-north](https://github.com/mike-north)! - Point the README at eslint-sh by name rather than by a repository link.
 
 ## 0.1.2
 
 ### Patch Changes
 
-- [#3](https://github.com/mike-north/sh-codemod/pull/3) [`d0e9a20`](https://github.com/mike-north/sh-codemod/commit/d0e9a20565d95e5db2c91deac5889651e4cbfc0b) Thanks [@mike-north](https://github.com/mike-north)! - Rewrite the README for users: what the package does, installation, a quickstart with real output, and the format and createEditor APIs.
+- [#3](https://github.com/mike-north/sh-codemod/pull/3) [`34b2c90`](https://github.com/mike-north/sh-codemod/commit/34b2c90039dc0973be56af42455267b763392e8f) Thanks [@mike-north](https://github.com/mike-north)! - Rewrite the README for users: what the package does, installation, a quickstart with real output, and the format and createEditor APIs.
 
 ## 0.1.1
 
