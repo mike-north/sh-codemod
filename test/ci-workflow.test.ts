@@ -1,7 +1,8 @@
 /**
- * Pushes to main and PRs must run the standalone gates with read-only authority.
+ * Every branch push and PR runs the standalone gates with read-only authority; tag pushes do not.
  * The workflow uses YAML's JSON subset so Node can inspect it without a YAML dependency.
  * @see https://yaml.org/spec/1.2.2/ — JSON compatibility
+ * @see https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#onpushbranchestagsbranches-ignoretags-ignore — branch and tag filters
  */
 import assert from 'node:assert/strict';
 import { record } from './assertions.js';
@@ -73,7 +74,7 @@ function workflow(): IWorkflow {
 /** Enforce events, authority and setup before any gate command can be executed. */
 function gateCommands(config: IWorkflow): readonly string[] {
   expect(Object.keys(config.on).sort()).toEqual(['pull_request', 'push']);
-  expect(config.on.push).toEqual({ branches: ['main'] });
+  expect(config.on.push).toEqual({ branches: ['**'] });
   expect(config.on.pull_request).toBeNull();
   expect(config.permissions).toEqual({ contents: 'read' });
   expect(Object.keys(config.jobs)).toEqual(['validation']);
@@ -200,7 +201,7 @@ function runGates(
 }
 
 describe('standalone CI delivery', () => {
-  it('runs frozen install, build, check and test on pushes to main and PRs', () => {
+  it('runs frozen install, build, check and test on every branch push and PR, excluding tag pushes', () => {
     expect(runGates(workflow())).toEqual({
       status: 0,
       calls: [
@@ -243,6 +244,12 @@ describe('standalone CI delivery', () => {
       gateCommands({
         ...original,
         on: { ...original.on, push: null },
+      }),
+    ).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        on: { ...original.on, push: { branches: ['main'] } },
       }),
     ).toThrow();
     const job = Object.values(original.jobs)[0];
