@@ -1,5 +1,5 @@
 /**
- * Every push and PR must run the standalone gates with read-only authority.
+ * Pushes to main and PRs must run the standalone gates with read-only authority.
  * The workflow uses YAML's JSON subset so Node can inspect it without a YAML dependency.
  * @see https://yaml.org/spec/1.2.2/ — JSON compatibility
  */
@@ -73,11 +73,10 @@ function workflow(): IWorkflow {
 /** Enforce events, authority and setup before any gate command can be executed. */
 function gateCommands(config: IWorkflow): readonly string[] {
   expect(Object.keys(config.on).sort()).toEqual(['pull_request', 'push']);
-  for (const event of Object.values(config.on)) {
-    expect([null, {}]).toContainEqual(event);
-  }
+  expect(config.on.push).toEqual({ branches: ['main'] });
+  expect(config.on.pull_request).toBeNull();
   expect(config.permissions).toEqual({ contents: 'read' });
-  expect(Object.values(config.jobs)).toHaveLength(1);
+  expect(Object.keys(config.jobs)).toEqual(['validation']);
   const job = Object.values(config.jobs)[0];
   if (!job) {
     throw new Error('A hosted validation job is required');
@@ -201,7 +200,7 @@ function runGates(
 }
 
 describe('standalone CI delivery', () => {
-  it('runs frozen install, build, check and test on every push and PR', () => {
+  it('runs frozen install, build, check and test on pushes to main and PRs', () => {
     expect(runGates(workflow())).toEqual({
       status: 0,
       calls: [
@@ -237,19 +236,22 @@ describe('standalone CI delivery', () => {
     );
   });
 
-  it('rejects filtered triggers and missing or bypassed gates', () => {
+  it('rejects incorrect triggers and missing or bypassed gates', () => {
     const original = workflow();
     expect(() => gateCommands({ ...original, on: { push: null } })).toThrow();
     expect(() =>
       gateCommands({
         ...original,
-        on: { ...original.on, push: { branches: ['main'] } },
+        on: { ...original.on, push: null },
       }),
     ).toThrow();
     const job = Object.values(original.jobs)[0];
     if (!job) {
       throw new Error('The real validation job is required');
     }
+    expect(() =>
+      gateCommands({ ...original, jobs: { renamed: job } }),
+    ).toThrow();
     expect(() =>
       gateCommands({
         ...original,
