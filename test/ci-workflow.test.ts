@@ -30,6 +30,7 @@ interface IWorkflow {
       string,
       {
         readonly 'runs-on': string;
+        readonly name?: unknown;
         readonly if?: unknown;
         readonly permissions?: unknown;
         readonly 'continue-on-error'?: unknown;
@@ -82,6 +83,8 @@ function gateCommands(config: IWorkflow): readonly string[] {
   if (!job) {
     throw new Error('A hosted validation job is required');
   }
+  // The job ID supplies the required status-check context only when no name overrides it.
+  expect(job).not.toHaveProperty('name');
   expect(job['runs-on']).toBe('ubuntu-latest');
   expect(job.if).toBeUndefined();
   expect(job.permissions).toBeUndefined();
@@ -258,6 +261,12 @@ describe('standalone CI delivery', () => {
     }
     expect(() =>
       gateCommands({ ...original, jobs: { renamed: job } }),
+    ).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        jobs: { validation: { ...job, name: 'Validation' } },
+      }),
     ).toThrow();
     expect(() =>
       gateCommands({
