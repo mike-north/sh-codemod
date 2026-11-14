@@ -1,7 +1,8 @@
 /**
- * Every push and PR must run the standalone gates with read-only authority.
+ * Every branch push and PR runs the standalone gates with read-only authority; tag pushes do not.
  * The workflow uses YAML's JSON subset so Node can inspect it without a YAML dependency.
  * @see https://yaml.org/spec/1.2.2/ — JSON compatibility
+ * @see https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#onpushbranchestagsbranches-ignoretags-ignore — branch and tag filters
  */
 import assert from 'node:assert/strict';
 import { record } from './assertions.js';
@@ -29,6 +30,7 @@ interface IWorkflow {
       string,
       {
         readonly 'runs-on': string;
+        readonly name?: unknown;
         readonly if?: unknown;
         readonly permissions?: unknown;
         readonly 'continue-on-error'?: unknown;
@@ -73,15 +75,16 @@ function workflow(): IWorkflow {
 /** Enforce events, authority and setup before any gate command can be executed. */
 function gateCommands(config: IWorkflow): readonly string[] {
   expect(Object.keys(config.on).sort()).toEqual(['pull_request', 'push']);
-  for (const event of Object.values(config.on)) {
-    expect([null, {}]).toContainEqual(event);
-  }
+  expect(config.on.push).toEqual({ branches: ['**'] });
+  expect(config.on.pull_request).toBeNull();
   expect(config.permissions).toEqual({ contents: 'read' });
-  expect(Object.values(config.jobs)).toHaveLength(1);
+  expect(Object.keys(config.jobs)).toEqual(['validation']);
   const job = Object.values(config.jobs)[0];
   if (!job) {
     throw new Error('A hosted validation job is required');
   }
+  // The job ID supplies the required status-check context only when no name overrides it.
+  expect(job).not.toHaveProperty('name');
   expect(job['runs-on']).toBe('ubuntu-latest');
   expect(job.if).toBeUndefined();
   expect(job.permissions).toBeUndefined();
@@ -201,7 +204,7 @@ function runGates(
 }
 
 describe('standalone CI delivery', () => {
-  it('runs frozen install, build, check and test on every push and PR', () => {
+  it('runs frozen install, build, check and test on every branch push and PR, excluding tag pushes', () => {
     expect(runGates(workflow())).toEqual({
       status: 0,
       calls: [
@@ -237,9 +240,15 @@ describe('standalone CI delivery', () => {
     );
   });
 
-  it('rejects filtered triggers and missing or bypassed gates', () => {
+  it('rejects incorrect triggers and missing or bypassed gates', () => {
     const original = workflow();
     expect(() => gateCommands({ ...original, on: { push: null } })).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        on: { ...original.on, push: null },
+      }),
+    ).toThrow();
     expect(() =>
       gateCommands({
         ...original,
@@ -250,6 +259,15 @@ describe('standalone CI delivery', () => {
     if (!job) {
       throw new Error('The real validation job is required');
     }
+    expect(() =>
+      gateCommands({ ...original, jobs: { renamed: job } }),
+    ).toThrow();
+    expect(() =>
+      gateCommands({
+        ...original,
+        jobs: { validation: { ...job, name: 'Validation' } },
+      }),
+    ).toThrow();
     expect(() =>
       gateCommands({
         ...original,
