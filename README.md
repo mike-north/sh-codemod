@@ -240,7 +240,8 @@ Edits are placed by their position in the _original_ text, not by the order you 
 Ranges are UTF-16 indices into the string you passed, the same units as ESLint ranges and
 `String#slice`, so they are correct after emoji, CJK text and combining marks. A `File` spans
 from its first to its last token. A `Stmt` replacement starts after its leading comments and
-stops before its terminator (`;`, `&`, or the dialect equivalent). If its here-document body
+preserves its terminator (`;`, `&`, or the dialect equivalent). When replacement text ends in
+the same parsed terminator, it supplies that terminator once. If its here-document body
 follows that terminator, keep the redirect in the replacement header to retain the association.
 
 A word that ends a `\r\n` line is edited without its `\r`. A here-document body replacement

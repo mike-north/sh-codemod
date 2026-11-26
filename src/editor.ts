@@ -1,11 +1,16 @@
 /** Source-bound text edits preserve untouched bytes and reject ambiguous or unowned ranges. */
 import {
   DashHdoc,
+  InputError,
+  LangError,
+  ParseError,
+  parseSync,
   parseWithPositionsSync,
   walk,
   type File,
   type Node,
   type NodePositions,
+  type ParseOptions,
   type ParsedFile,
   type Redirect,
   type Word,
@@ -38,13 +43,14 @@ export interface Editor {
 
   /**
    * Queues replacing the node's source text with `newText`. A `Stmt` replacement starts after
-   * its leading comments and stops before its terminator (`;`, `&`, or the dialect equivalent).
-   * Here-document bodies deferred past that terminator are outside the replaced range.
+   * its leading comments and preserves its terminator (`;`, `&`, or the dialect equivalent).
+   * If `newText` ends in the same parsed terminator, it supplies that terminator once.
+   * Here-document bodies deferred past the original terminator are outside the replaced range.
    *
    * @throws {@link ForeignNodeError} when `node` is not from this editor's parse.
    * @throws {@link InvalidNodeError} when `node` is not a syntax node.
-   * @throws RangeError with `SH_CODEMOD_EDIT_RANGE` for invalid character bounds or an ambiguous
-   * here-document body end.
+   * @throws RangeError with `SH_CODEMOD_EDIT_RANGE` for invalid character bounds, an ambiguous
+   * here-document body end, or an unverifiable statement terminator in `newText`.
    */
   replaceNode(node: Node, newText: string): void;
 
@@ -225,6 +231,34 @@ function editRangeError(message: string): RangeError {
   });
 }
 
+/** Uses the replacement's syntax to distinguish a final terminator from a literal suffix. */
+function endsInTerminator(
+  replacement: string,
+  terminator: string,
+  options: ParseOptions,
+): boolean {
+  const trimmed = replacement.trimEnd();
+  if (!trimmed.endsWith(terminator)) return false;
+  try {
+    const final = parseSync(replacement, options).Stmts?.at(-1)?.Semicolon;
+    return (
+      final?.IsValid === true &&
+      final.Offset === Buffer.byteLength(trimmed) - terminator.length
+    );
+  } catch (error) {
+    if (
+      error instanceof ParseError ||
+      error instanceof LangError ||
+      error instanceof InputError
+    ) {
+      throw editRangeError(
+        'Cannot verify the statement terminator in replacement text. Omit the original terminator or supply a complete statement.',
+      );
+    }
+    throw error;
+  }
+}
+
 /** Drops the queue bookkeeping so errors expose only the public edit shape. */
 function plain(edit: QueuedEdit): TextEdit {
   return { range: [edit.range[0], edit.range[1]], text: edit.text };
@@ -240,7 +274,7 @@ function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
 }
 
 /**
- * Starts an editing session over `text`: parse once, queue edits against nodes, apply them as
+ * Starts an editing session over `text`: parse the source once, queue edits against nodes, apply them as
  * plain text patches. Nothing is reprinted, so everything outside the edited node ranges
  * (comments, whitespace, `\r\n`, multibyte characters) comes back byte for byte.
  *
@@ -269,20 +303,19 @@ function compareEdits(a: QueuedEdit, b: QueuedEdit): number {
  * @public
  */
 function createEditor(text: string, options: EditorOptions = {}): Editor {
-  const parsed = parseWithPositionsSync(
-    text,
-    serviceParseOptions('createEditor', options),
-  );
+  const parseOptions = serviceParseOptions('createEditor', options);
+  const parsed = parseWithPositionsSync(text, parseOptions);
   const byteToUtf16 = buildByteToUtf16(text);
   const replacementEnds = findReplacementEnds(parsed, text, byteToUtf16);
   const edits: QueuedEdit[] = [];
 
   /** The node's UTF-16 range in `text`, or a rejection when the node is not from this parse. */
-  function rangeOf(node: Node, replacing: boolean): [number, number] {
+  function rangeOf(node: Node, replacement?: string): [number, number] {
     if (!isNodeLike(node)) throw new InvalidNodeError(node);
     const positions = parsed.Positions.get(node);
     if (positions === undefined) throw new ForeignNodeError(node);
-    const replacementEnd = replacing ? replacementEnds.get(node) : undefined;
+    const replacementEnd =
+      replacement === undefined ? undefined : replacementEnds.get(node);
     if (replacementEnd === null) {
       throw editRangeError(
         'Cannot replace this here-document body without a verified closing delimiter range',
@@ -296,6 +329,14 @@ function createEditor(text: string, options: EditorOptions = {}): Editor {
         `${node.Type} bounds do not fall on character boundaries of the text`,
       );
     }
+    if (
+      replacement !== undefined &&
+      node.Type === 'Stmt' &&
+      end < reportedEnd &&
+      endsInTerminator(replacement, text.slice(end, reportedEnd), parseOptions)
+    ) {
+      return [start, reportedEnd];
+    }
     return [start, trimLineTerminatorCarriageReturn(text, start, end)];
   }
 
@@ -307,10 +348,10 @@ function createEditor(text: string, options: EditorOptions = {}): Editor {
   return {
     ast: parsed.File,
     replaceNode(node, newText) {
-      queue(rangeOf(node, true), newText);
+      queue(rangeOf(node, newText), newText);
     },
     insertBefore(node, insertion) {
-      const [start] = rangeOf(node, false);
+      const [start] = rangeOf(node);
       queue([start, start], insertion);
     },
     apply() {

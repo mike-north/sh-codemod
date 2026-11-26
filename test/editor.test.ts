@@ -104,6 +104,24 @@ describe('preservation', () => {
   });
 
   it.each([
+    ['echo old;', 'echo new;', 'echo new;'],
+    ['echo old; echo next', 'echo new;\t', 'echo new;\t echo next'],
+    ['echo old & echo next', 'echo new &', 'echo new & echo next'],
+    ['echo old;', 'echo new\\;', 'echo new\\;;'],
+  ])(
+    'uses a single statement terminator when replacing %j with %j',
+    (source, replacement, expected) => {
+      const editor = createEditor(source);
+      editor.replaceNode(required(editor.ast.Stmts?.[0]), replacement);
+      const output = editor.apply();
+      expect(output).toBe(expected);
+      expect(createEditor(output).ast.Stmts).toHaveLength(
+        editor.ast.Stmts?.length ?? 0,
+      );
+    },
+  );
+
+  it.each([
     ['&', LangBash],
     ['|&', LangMirBSDKorn],
     ['&!', LangZsh],

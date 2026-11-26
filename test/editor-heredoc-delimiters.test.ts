@@ -43,6 +43,7 @@ function body(editor: Editor, index: number): Node {
 describe('delimiter word forms', () => {
   it.each([
     ['an escaped literal backslash', 'cat <<E\\\\F\nold\nE\\F\necho next\n'],
+    ['an escaped leading backslash', 'cat <<\\\\EOF\nold\n\\EOF\n'],
     ['a quoted leading tab', "cat <<'\tEND'\nold\n\tEND\necho next\n"],
   ])(
     'refuses body replacements that would delete the delimiter with %s',

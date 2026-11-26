@@ -100,7 +100,7 @@ Queues inserting `text` immediately before the node's first character, leaving t
 
 </td><td>
 
-Queues replacing the node's source text with `newText`<!-- -->. A `Stmt` replacement starts after its leading comments and stops before its terminator (`;`<!-- -->, `&`<!-- -->, or the dialect equivalent). Here-document bodies deferred past that terminator are outside the replaced range.
+Queues replacing the node's source text with `newText`<!-- -->. A `Stmt` replacement starts after its leading comments and preserves its terminator (`;`<!-- -->, `&`<!-- -->, or the dialect equivalent). If `newText` ends in the same parsed terminator, it supplies that terminator once. Here-document bodies deferred past the original terminator are outside the replaced range.
 
 
 </td></tr>
