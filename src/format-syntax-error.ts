@@ -79,7 +79,10 @@ interface SourcePosition {
 function locateByteOffset(text: string, byteOffset: number): SourcePosition {
   const bytes = new TextEncoder().encode(text);
   const clamped = Math.min(Math.max(byteOffset, 0), bytes.length);
-  const prefix = new TextDecoder().decode(bytes.subarray(0, clamped));
+  // The caller's string includes a leading BOM, so it counts toward these positions.
+  const prefix = new TextDecoder('utf-8', { ignoreBOM: true }).decode(
+    bytes.subarray(0, clamped),
+  );
   const lineStart = prefix.lastIndexOf('\n') + 1;
   return {
     offset: prefix.length,

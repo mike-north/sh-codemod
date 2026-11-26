@@ -251,6 +251,21 @@ describe('idempotence across printer options', () => {
 });
 
 describe('syntax errors', () => {
+  it.each([
+    ["\uFEFFecho '🦊", { line: 1, column: 7, offset: 6, byteOffset: 8 }],
+    [
+      "\uFEFFecho 中文\necho '🦊",
+      { line: 2, column: 6, offset: 14, byteOffset: 20 },
+    ],
+  ])(
+    'counts a leading BOM in UTF-16 syntax-error offsets for %j',
+    (source, position) => {
+      const error = formatError(source);
+      expect(error).toBeInstanceOf(FormatSyntaxError);
+      expect(error).toMatchObject(position);
+    },
+  );
+
   it('throws FormatSyntaxError, with code, cause and filename, instead of returning text', () => {
     const error = formatError('echo (', { filename: 'build.sh' });
     expect(error).toBeInstanceOf(FormatSyntaxError);

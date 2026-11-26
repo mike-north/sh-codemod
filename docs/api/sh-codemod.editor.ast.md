@@ -4,7 +4,7 @@
 
 ## Editor.ast property
 
-The parsed file. Nodes taken from it are the only ones the methods below accept.
+The parsed file. For comments copied by `sh-ast`<!-- -->'s `walk`<!-- -->, use the stored AST objects.
 
 **Signature:**
 

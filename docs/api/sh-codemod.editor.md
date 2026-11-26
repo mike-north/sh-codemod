@@ -52,7 +52,7 @@ File
 
 </td><td>
 
-The parsed file. Nodes taken from it are the only ones the methods below accept.
+The parsed file. For comments copied by `sh-ast`<!-- -->'s `walk`<!-- -->, use the stored AST objects.
 
 
 </td></tr>
@@ -100,7 +100,7 @@ Queues inserting `text` immediately before the node's first character, leaving t
 
 </td><td>
 
-Queues replacing the node's source text with `newText`<!-- -->. The node's extent is the parser's own, so, for example, a `Stmt` does not include its leading comments or its `;`<!-- -->.
+Queues replacing the node's source text with `newText`<!-- -->. A `Stmt` replacement starts after its leading comments and stops before its terminator (`;`<!-- -->, `&`<!-- -->, or the dialect equivalent). Here-document bodies deferred past that terminator are outside the replaced range.
 
 
 </td></tr>

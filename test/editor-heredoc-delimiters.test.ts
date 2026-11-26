@@ -1,6 +1,6 @@
 /**
- * The editor keeps every here-document's closing delimiter line when a body is replaced,
- * whatever form the delimiter word takes and wherever the here-document sits.
+ * The editor preserves verified here-document closing delimiters and refuses body replacements
+ * when the parser's positions give no safe end.
  *
  * mvdan/sh reports a body as ending after its closing delimiter; the editor ends the body
  * where the delimiter line begins instead. That correction must:
@@ -14,7 +14,7 @@
  *
  * Every expected string is written out by hand.
  *
- * @see ../src/editor.ts (TSDoc of `createEditor` and `findHeredocBodyEnds`)
+ * @see ../src/editor.ts (TSDoc of `createEditor` and `checkedHeredocBodyEnd`)
  * @see https://pubs.opengroup.org/onlinepubs/9799919799/utilities/V3_chap02.html#tag_19_07_04
  * @see https://github.com/mike-north/eslint-sh/issues/182
  */
@@ -41,6 +41,29 @@ function body(editor: Editor, index: number): Node {
 }
 
 describe('delimiter word forms', () => {
+  it.each([
+    ['an escaped literal backslash', 'cat <<E\\\\F\nold\nE\\F\necho next\n'],
+    ['a quoted leading tab', "cat <<'\tEND'\nold\n\tEND\necho next\n"],
+  ])(
+    'refuses body replacements that would delete the delimiter with %s',
+    (_label, text) => {
+      const editor = createEditor(text);
+      const word = redirects(editor)[0]?.Hdoc;
+      const last = word?.Parts?.at(-1);
+      if (!word || !last) throw new Error('Expected a here-document body');
+      for (const node of [word, last]) {
+        const replace = () => {
+          editor.replaceNode(node, 'new\n');
+        };
+        expect(replace).toThrow(RangeError);
+        expect(replace).toThrow(
+          expect.objectContaining({ code: 'SH_CODEMOD_EDIT_RANGE' }),
+        );
+      }
+      expect(editor.apply()).toBe(text);
+    },
+  );
+
   it('keeps a double-quoted delimiter', () => {
     const editor = createEditor('cat <<"EOF"\nhi\nEOF\necho x\n');
     editor.replaceNode(body(editor, 0), 'yo\n');

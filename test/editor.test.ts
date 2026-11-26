@@ -14,7 +14,7 @@
  * Every expected string is written out by hand.
  */
 import assert from 'node:assert/strict';
-import { walk, type Node } from 'sh-ast';
+import { LangBash, LangMirBSDKorn, LangZsh, walk, type Node } from 'sh-ast';
 import { describe, expect, it } from 'vitest';
 import {
   createEditor,
@@ -25,9 +25,8 @@ import {
 } from '../src/index.js';
 
 /** Require an existing fixture node so a missing parser result fails at the lookup. */
-function required<T>(value: T | undefined): T {
-  assert.notEqual(value, undefined);
-  if (value === undefined) {
+function required<T>(value: T | null | undefined): T {
+  if (value == null) {
     throw new Error('Expected fixture node');
   }
   return value;
@@ -96,6 +95,39 @@ describe('editor shape', () => {
 });
 
 describe('preservation', () => {
+  it('keeps a statement replacement from joining it to the next command', () => {
+    const editor = createEditor('echo old; echo next');
+    editor.replaceNode(required(editor.ast.Stmts?.[0]), 'echo new');
+    const output = editor.apply();
+    expect(output).toBe('echo new; echo next');
+    expect(createEditor(output).ast.Stmts).toHaveLength(2);
+  });
+
+  it.each([
+    ['&', LangBash],
+    ['|&', LangMirBSDKorn],
+    ['&!', LangZsh],
+  ])(
+    'preserves the %s statement terminator during a statement replacement',
+    (terminator, dialect) => {
+      const editor = createEditor(`echo old ${terminator} echo next`, {
+        dialect,
+      });
+      editor.replaceNode(required(editor.ast.Stmts?.[0]), 'echo new ');
+      const output = editor.apply();
+      expect(output).toBe(`echo new ${terminator} echo next`);
+      expect(createEditor(output, { dialect }).ast.Stmts).toHaveLength(2);
+    },
+  );
+
+  it('keeps the separator and deferred here-document after replacing a statement header', () => {
+    const editor = createEditor('cat <<EOF; echo next\nold\nEOF\n');
+    editor.replaceNode(required(editor.ast.Stmts?.[0]), 'cat -n <<EOF');
+    const output = editor.apply();
+    expect(output).toBe('cat -n <<EOF; echo next\nold\nEOF\n');
+    expect(createEditor(output).ast.Stmts).toHaveLength(2);
+  });
+
   it('keeps comments, odd spacing, blank lines and CRLF outside the edit', () => {
     const text = '# lead\r\n\r\necho   old    # trail\r\n\r\n\r\nls\t-l\r\n';
     const editor = createEditor(text);
@@ -217,11 +249,35 @@ describe('here-document bodies', () => {
 });
 
 describe('comments attached to statements', () => {
+  it('rejects foreign attached comments even when their text and offset match', () => {
+    const text = 'echo a # same\n';
+    const editor = createEditor(text);
+    const other = createEditor('echo b # same\n');
+    const local = required(editor.ast.Stmts?.[0]?.Comments?.[0]);
+    const foreign = required(other.ast.Stmts?.[0]?.Comments?.[0]);
+    for (const comment of [
+      foreign,
+      structuredClone(local),
+      required(nodesOfType(editor, 'Comment')[0]),
+    ]) {
+      expect(() => {
+        editor.replaceNode(comment, '# changed');
+      }).toThrow(ForeignNodeError);
+      expect(() => {
+        editor.insertBefore(comment, '# changed');
+      }).toThrow(ForeignNodeError);
+    }
+    expect(editor.apply()).toBe(text);
+  });
+
   it('edits leading, middle, trailing and final comments, byte-exact around multibyte text', () => {
     const editor = createEditor(
       '# top é\necho a # trail 🎉\n# mid\necho b\n# last\n',
     );
-    const comments = nodesOfType(editor, 'Comment');
+    const comments = [
+      ...(editor.ast.Stmts?.flatMap((stmt) => stmt?.Comments ?? []) ?? []),
+      ...(editor.ast.Last ?? []),
+    ];
     expect(comments.length).toBe(4);
     editor.replaceNode(required(comments[0]), '# TOP');
     editor.replaceNode(required(comments[1]), '# TRAIL');
@@ -234,7 +290,10 @@ describe('comments attached to statements', () => {
 
   it('inserts before an attached comment and keeps CRLF', () => {
     const editor = createEditor('echo a # c\r\necho b\r\n');
-    editor.insertBefore(required(nodesOfType(editor, 'Comment')[0]), '# note ');
+    editor.insertBefore(
+      required(editor.ast.Stmts?.[0]?.Comments?.[0]),
+      '# note ',
+    );
     expect(editor.apply()).toBe('echo a # note # c\r\necho b\r\n');
   });
 
@@ -253,12 +312,15 @@ describe('comments attached to statements', () => {
     const different = createEditor('echo a # z\n');
     expect(
       thrown(() => {
-        editor.replaceNode(required(nodesOfType(other, 'Comment')[0]), '#');
+        editor.replaceNode(required(other.ast.Stmts?.[0]?.Comments?.[0]), '#');
       }),
     ).toBeInstanceOf(ForeignNodeError);
     expect(
       thrown(() => {
-        editor.replaceNode(required(nodesOfType(different, 'Comment')[0]), '#');
+        editor.replaceNode(
+          required(different.ast.Stmts?.[0]?.Comments?.[0]),
+          '#',
+        );
       }),
     ).toBeInstanceOf(ForeignNodeError);
   });

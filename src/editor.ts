@@ -1,12 +1,11 @@
 /** Source-bound text edits preserve untouched bytes and reject ambiguous or unowned ranges. */
 import {
-  nodeEnd,
-  nodePos,
+  DashHdoc,
   parseWithPositionsSync,
   walk,
-  type Comment,
   type File,
   type Node,
+  type NodePositions,
   type ParsedFile,
   type Redirect,
   type Word,
@@ -34,16 +33,18 @@ export interface EditorOptions {
  * @public
  */
 export interface Editor {
-  /** The parsed file. Nodes taken from it are the only ones the methods below accept. */
+  /** The parsed file. For comments copied by `sh-ast`'s `walk`, use the stored AST objects. */
   readonly ast: File;
 
   /**
-   * Queues replacing the node's source text with `newText`. The node's extent is the parser's
-   * own, so, for example, a `Stmt` does not include its leading comments or its `;`.
+   * Queues replacing the node's source text with `newText`. A `Stmt` replacement starts after
+   * its leading comments and stops before its terminator (`;`, `&`, or the dialect equivalent).
+   * Here-document bodies deferred past that terminator are outside the replaced range.
    *
    * @throws {@link ForeignNodeError} when `node` is not from this editor's parse.
    * @throws {@link InvalidNodeError} when `node` is not a syntax node.
-   * @throws RangeError with `SH_CODEMOD_EDIT_RANGE` when parser bounds do not name character boundaries.
+   * @throws RangeError with `SH_CODEMOD_EDIT_RANGE` for invalid character bounds or an ambiguous
+   * here-document body end.
    */
   replaceNode(node: Node, newText: string): void;
 
@@ -135,8 +136,8 @@ function goText(value: string | Uint8Array): string {
 }
 
 /**
- * The text a here-document delimiter word denotes (quotes and backslashes removed), or
- * `undefined` when the word is not made only of literal and quoted-literal parts.
+ * A candidate delimiter from literal and quoted-literal AST parts. The caller must verify it
+ * against the reported end before using it as a bound.
  */
 function delimiterText(word: Word): string | undefined {
   let result = '';
@@ -154,44 +155,61 @@ function delimiterText(word: Word): string | undefined {
 }
 
 /**
- * Finds where each here-document body really ends, for the nodes whose reported end is wrong.
- *
- * mvdan/sh (v3.13.1) reports the last part of a here-document body, and the body word holding
- * it, as ending after the closing delimiter, so the reported range covers the delimiter line.
- * Replacing that range would delete the delimiter and leave invalid shell. The body proper ends
- * where the delimiter begins (after any `<<-` tab indentation, which `Lit.Value` includes).
- * The result maps each affected node to that UTF-16 end; a node is left out when the text at
- * the end of its range is not the redirect's delimiter, so a range is never shortened on a guess.
+ * Checks the closing line identified by the parser's end coordinates. If the candidate matches,
+ * the body ends before the delimiter word, including any `<<-` indentation as in `Lit.Value`.
+ * The pinned parser includes the delimiter in the reported body range. Until it supplies separate
+ * bounds, an unverified end has no safe replacement range.
  */
-function findHeredocBodyEnds(
+function checkedHeredocBodyEnd(
+  redirect: Redirect,
+  bounds: NodePositions,
+  text: string,
+  byteToUtf16: Int32Array,
+): number | null {
+  const delimiter = redirect.Word && delimiterText(redirect.Word);
+  // A delimiter that starts with a literal tab needs bounds that distinguish it from indentation.
+  if (delimiter == null || delimiter.startsWith('\t')) return null;
+  const { Pos, End } = bounds;
+  const start = byteToUtf16[Pos.Offset] ?? -1;
+  const reportedEnd = byteToUtf16[End.Offset] ?? -1;
+  const lineStart = byteToUtf16[End.Offset - End.Col + 1] ?? -1;
+  if (start < 0 || reportedEnd < 0 || End.Col === 0 || lineStart <= start)
+    return null;
+  const end = trimLineTerminatorCarriageReturn(text, start, reportedEnd);
+  const delimiterStart = end - delimiter.length;
+  if (
+    delimiterStart < lineStart ||
+    text.slice(delimiterStart, end) !== delimiter
+  )
+    return null;
+  const indent = text.slice(lineStart, delimiterStart);
+  if (indent !== '' && (redirect.Op !== DashHdoc || !/^\t*$/.test(indent)))
+    return null;
+  return delimiterStart;
+}
+
+/** Captures replacement ends that differ from the full parser ranges. `null` marks unsafe ends. */
+function findReplacementEnds(
   parsed: ParsedFile,
   text: string,
   byteToUtf16: Int32Array,
-): Map<Node, number> {
-  const ends = new Map<Node, number>();
+): Map<Node, number | null> {
+  const ends = new Map<Node, number | null>();
   walk(parsed.File, (node) => {
+    if (node?.Type === 'Stmt' && node.Semicolon.IsValid) {
+      ends.set(node, byteToUtf16[node.Semicolon.Offset] ?? -1);
+    }
     if (node?.Type !== 'Redirect') return true;
-    const redirect: Redirect = node;
-    const body = redirect.Hdoc;
+    const body = node.Hdoc;
     const bounds = body && parsed.Positions.get(body);
-    const delimiter = redirect.Word && delimiterText(redirect.Word);
-    if (!body || !bounds || delimiter === undefined || delimiter === null)
-      return true;
-    const start = byteToUtf16.at(bounds.Pos.Offset) ?? -1;
-    const reportedEnd = byteToUtf16.at(bounds.End.Offset) ?? -1;
-    if (start < 0 || reportedEnd < 0) return true;
-    const end = trimLineTerminatorCarriageReturn(text, start, reportedEnd);
-    const lineStart = text.lastIndexOf('\n', end - 1) + 1;
-    if (lineStart <= start) return true;
-    let delimiterStart = lineStart;
-    while (text[delimiterStart] === '\t') delimiterStart += 1;
-    if (text.slice(delimiterStart, end) !== delimiter) return true;
+    if (!body || !bounds) return true;
+    const end = checkedHeredocBodyEnd(node, bounds, text, byteToUtf16);
     walk(body, (inner) => {
       if (
         inner &&
         parsed.Positions.get(inner)?.End.Offset === bounds.End.Offset
       ) {
-        ends.set(inner, delimiterStart);
+        ends.set(inner, end);
       }
       return true;
     });
@@ -200,46 +218,11 @@ function findHeredocBodyEnds(
   return ends;
 }
 
-/** Where an attached comment sits in the text, and the text it holds, for matching. */
-interface AttachedComment {
-  readonly range: [number, number];
-  readonly text: string;
-}
-
-/**
- * Records the bounds of every comment the parser attached to a statement, keyed by the byte
- * offset of its `#`.
- *
- * Those comments are reachable from the tree but absent from the parse's position snapshot,
- * and `walk` hands out a fresh object for them on every visit, so object identity cannot name
- * them. Their identity is therefore the offset of the `#` together with the comment's text.
- * Their extent comes from the live `nodePos`/`nodeEnd` taken now, before any edit could change
- * the tree. Comments the snapshot knows are left to it.
- */
-function findAttachedComments(
-  parsed: ParsedFile,
-  byteToUtf16: Int32Array,
-): Map<number, AttachedComment> {
-  const found = new Map<number, AttachedComment>();
-  /** Records one comment unless the snapshot already covers it. */
-  function record(comment: Comment): void {
-    if (parsed.Positions.get(comment) !== undefined) return;
-    const start = byteToUtf16.at(nodePos(comment).Offset) ?? -1;
-    const end = byteToUtf16.at(nodeEnd(comment).Offset) ?? -1;
-    if (start >= 0 && end >= 0) {
-      found.set(comment.Hash.Offset, {
-        range: [start, end],
-        text: goText(comment.Text),
-      });
-    }
-  }
-  walk(parsed.File, (node) => {
-    if (node?.Type === 'Comment') record(node);
-    if (node?.Type === 'Stmt')
-      for (const comment of node.Comments ?? []) record(comment);
-    return true;
+/** Identifies an edit whose source extent cannot be used safely. */
+function editRangeError(message: string): RangeError {
+  return Object.assign(new RangeError(message), {
+    code: 'SH_CODEMOD_EDIT_RANGE',
   });
-  return found;
 }
 
 /** Drops the queue bookkeeping so errors expose only the public edit shape. */
@@ -291,37 +274,29 @@ function createEditor(text: string, options: EditorOptions = {}): Editor {
     serviceParseOptions('createEditor', options),
   );
   const byteToUtf16 = buildByteToUtf16(text);
-  const heredocBodyEnds = findHeredocBodyEnds(parsed, text, byteToUtf16);
-  const attachedComments = findAttachedComments(parsed, byteToUtf16);
+  const replacementEnds = findReplacementEnds(parsed, text, byteToUtf16);
   const edits: QueuedEdit[] = [];
 
   /** The node's UTF-16 range in `text`, or a rejection when the node is not from this parse. */
-  function rangeOf(node: Node): [number, number] {
+  function rangeOf(node: Node, replacing: boolean): [number, number] {
     if (!isNodeLike(node)) throw new InvalidNodeError(node);
-    if (node.Type === 'Comment') {
-      const attached = attachedComments.get(node.Hash.Offset);
-      if (attached?.text === goText(node.Text)) {
-        return [attached.range[0], attached.range[1]];
-      }
-    }
     const positions = parsed.Positions.get(node);
     if (positions === undefined) throw new ForeignNodeError(node);
-    const start = byteToUtf16.at(positions.Pos.Offset) ?? -1;
-    const end = byteToUtf16.at(positions.End.Offset) ?? -1;
-    if (start < 0 || end < 0) {
-      // SH_CODEMOD_EDIT_RANGE refuses a parser extent that cannot name a text boundary.
-      throw Object.assign(
-        new RangeError(
-          `${node.Type} bounds do not fall on character boundaries of the text`,
-        ),
-        { code: 'SH_CODEMOD_EDIT_RANGE' },
+    const replacementEnd = replacing ? replacementEnds.get(node) : undefined;
+    if (replacementEnd === null) {
+      throw editRangeError(
+        'Cannot replace this here-document body without a verified closing delimiter range',
       );
     }
-    const bodyEnd = heredocBodyEnds.get(node);
-    return [
-      start,
-      bodyEnd ?? trimLineTerminatorCarriageReturn(text, start, end),
-    ];
+    const start = byteToUtf16[positions.Pos.Offset] ?? -1;
+    const reportedEnd = byteToUtf16[positions.End.Offset] ?? -1;
+    const end = replacementEnd ?? reportedEnd;
+    if (start < 0 || end < start || reportedEnd < end) {
+      throw editRangeError(
+        `${node.Type} bounds do not fall on character boundaries of the text`,
+      );
+    }
+    return [start, trimLineTerminatorCarriageReturn(text, start, end)];
   }
 
   /** Queues one edit, stamping it so ties at one position resolve in queue order. */
@@ -332,10 +307,10 @@ function createEditor(text: string, options: EditorOptions = {}): Editor {
   return {
     ast: parsed.File,
     replaceNode(node, newText) {
-      queue(rangeOf(node), newText);
+      queue(rangeOf(node, true), newText);
     },
     insertBefore(node, insertion) {
-      const [start] = rangeOf(node);
+      const [start] = rangeOf(node, false);
       queue([start, start], insertion);
     },
     apply() {
