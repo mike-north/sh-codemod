@@ -1,5 +1,13 @@
 # sh-codemod
 
+## 0.2.0
+
+### Minor Changes
+
+- [#14](https://github.com/mike-north/sh-codemod/pull/14) [`43b1040`](https://github.com/mike-north/sh-codemod/commit/43b1040b9601c9bdd5e2543d6a351169a99d591e) Thanks [@mike-north-bot](https://github.com/mike-north-bot)! - Require the original AST objects when editing comments on statements, case items, and array elements. Read those objects from their owner's `Comments` array. Comments copied by `sh-ast`'s `walk` now throw `ForeignNodeError` when passed to the editor.
+
+  Preserve statement terminators, including when replacement text supplies the same terminator. Refuse here-document body replacements when the closing delimiter cannot be located safely, and count a leading BOM when reporting UTF-16 syntax-error positions.
+
 ## 0.1.3
 
 ### Patch Changes
