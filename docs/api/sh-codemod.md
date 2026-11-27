@@ -93,7 +93,7 @@ Description
 
 </td><td>
 
-Starts an editing session over `text`<!-- -->: parse once, queue edits against nodes, apply them as plain text patches. Nothing is reprinted, so everything outside the edited node ranges (comments, whitespace, `\r\n`<!-- -->, multibyte characters) comes back byte for byte.
+Starts an editing session over `text`<!-- -->: parse the source once, queue edits against nodes, apply them as plain text patches. Nothing is reprinted, so everything outside the edited node ranges (comments, whitespace, `\r\n`<!-- -->, multibyte characters) comes back byte for byte.
 
 Ordering is defined so output never depends on accident: - Edits are placed by position in the original text, not by the order they were queued. - Edits that only touch (one ends where the next begins) are both applied. - Insertions at one position appear in the order `insertBefore` was called. - An insertion at the start of a replaced node comes before the replacement; an insertion at its end comes after it. - Anything else that shares text, including two replacements of one node or an insertion strictly inside a replaced node, makes `apply()` throw [EditOverlapError](./sh-codemod.editoverlaperror.md)<!-- -->.
 

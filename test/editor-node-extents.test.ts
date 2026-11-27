@@ -81,7 +81,9 @@ describe('carriage returns', () => {
 describe('comments outside statements', () => {
   it('edits comments attached to case clauses', () => {
     const editor = createEditor('case x in\n# c1\na) :;; # c2\nesac\n');
-    const comments = nodesOfType(editor, 'Comment');
+    const item = required(nodesOfType(editor, 'CaseItem')[0]);
+    if (item.Type !== 'CaseItem') throw new Error('Expected case item');
+    const comments = item.Comments ?? [];
     expect(comments.length).toBe(2);
     editor.replaceNode(required(comments[0]), '# one');
     editor.replaceNode(required(comments[1]), '# two');
@@ -90,7 +92,9 @@ describe('comments outside statements', () => {
 
   it('edits a comment inside an array literal', () => {
     const editor = createEditor('x=(\n # c\n a\n)\n');
-    const comment = required(nodesOfType(editor, 'Comment')[0]);
+    const element = required(nodesOfType(editor, 'ArrayElem')[0]);
+    if (element.Type !== 'ArrayElem') throw new Error('Expected array element');
+    const comment = required(element.Comments?.[0]);
     editor.insertBefore(comment, '# note\n ');
     editor.replaceNode(comment, '# d');
     expect(editor.apply()).toBe('x=(\n # note\n # d\n a\n)\n');

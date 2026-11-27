@@ -4,7 +4,7 @@
 
 ## Editor.replaceNode() method
 
-Queues replacing the node's source text with `newText`<!-- -->. The node's extent is the parser's own, so, for example, a `Stmt` does not include its leading comments or its `;`<!-- -->.
+Queues replacing the node's source text with `newText`<!-- -->. A `Stmt` replacement starts after its leading comments and preserves its terminator (`;`<!-- -->, `&`<!-- -->, or the dialect equivalent). If `newText` ends in the same parsed terminator, it supplies that terminator once. Here-document bodies deferred past the original terminator are outside the replaced range.
 
 **Signature:**
 
@@ -70,5 +70,5 @@ void
 
 [InvalidNodeError](./sh-codemod.invalidnodeerror.md) when `node` is not a syntax node.
 
-RangeError with `SH_CODEMOD_EDIT_RANGE` when parser bounds do not name character boundaries.
+RangeError with `SH_CODEMOD_EDIT_RANGE` for invalid character bounds, an ambiguous here-document body end, or an unverifiable statement terminator in `newText`<!-- -->.
 

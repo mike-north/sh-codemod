@@ -238,23 +238,24 @@ Edits are placed by their position in the _original_ text, not by the order you 
 ### Ranges
 
 Ranges are UTF-16 indices into the string you passed, the same units as ESLint ranges and
-`String#slice`, so they are correct after emoji, CJK text and combining marks. The node extents
-are the parser's: a `Stmt` does not include its leading comments or its terminating `;`, and a
-`File` spans from its first to its last token. Two ranges the parser reports too wide are
-narrowed so they cannot eat structure: a word that ends a `\r\n` line is edited without its
-`\r`, and the body of a here-document (including `<<-` and CRLF forms) is edited without its
-closing delimiter, so replacing a body never produces an unterminated here-document. Replacing the
-whole `Redirect` or `Stmt` still replaces the delimiter, because it is inside the node.
+`String#slice`, so they are correct after emoji, CJK text and combining marks. A `File` spans
+from its first to its last token. A `Stmt` replacement starts after its leading comments and
+preserves its terminator (`;`, `&`, or the dialect equivalent). When replacement text ends in
+the same parsed terminator, it supplies that terminator once. If its here-document body
+follows that terminator, keep the redirect in the replacement header to retain the association.
+
+A word that ends a `\r\n` line is edited without its `\r`. A here-document body replacement
+ends before its verified closing delimiter. When the parser's positions do not give a safe
+bound, `replaceNode` throws `RangeError` with code `SH_CODEMOD_EDIT_RANGE`. A replacement of the
+whole redirect uses its full parser range, including its closing delimiter.
 
 ### Limits
 
 - The result is not re-parsed. If you need to know a codemod produced valid shell, parse the
   output (for example with `createEditor(result)`).
-- Comments the parser attaches to a statement (leading, trailing, between statements) are
-  edited like any node, but `sh-ast` hands out a fresh object for them on every `walk`, so
-  they are recognized by the position of their `#` and their text rather than by object
-  identity. A comment copied from another parse that has the same text at the same offset is
-  therefore accepted, and edits the same bytes.
+- For comments on statements, case items and array elements, use the original objects in
+  their `Comments` arrays. `sh-ast`'s `walk` returns copies of those comments, which produce
+  `ForeignNodeError` if passed to the editor.
 
 ## Differences from prettier-plugin-sh
 
